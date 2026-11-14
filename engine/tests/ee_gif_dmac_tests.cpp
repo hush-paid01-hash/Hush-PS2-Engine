@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -58,33 +59,18 @@ int main() {
     }
 
     retroshelf::EeGifGsRuntime runtime(ram, 8, 8);
-    retroshelf::EeDmacGlobalRegisters global;
-    auto channel = std::make_shared<retroshelf::EeGifDmacChannel2>(runtime, global);
-    auto globals = std::make_shared<retroshelf::EeDmacGlobalRegisters>(global);
-    // Channel device and global register block are mapped independently.
-    retroshelf::SystemBus bus(ram);
-    std::string error;
-    check(bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
-                       retroshelf::EeGifDmacChannel2::RegisterSize, channel, &error),
-          "map GIF channel 2 register window");
-    check(bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
-                       retroshelf::EeDmacGlobalRegisters::RegisterSize, globals, &error),
-          "map DMAC global register window");
-
-    // The global object used by the channel must be the same MMIO device.
-    // Rebuild the channel with the mapped global object to share D_CTRL/D_STAT.
-    channel = std::make_shared<retroshelf::EeGifDmacChannel2>(runtime, *globals);
-    // SystemBus mappings retain the original device, so this test uses the
-    // first shared object only for map validation; map a fresh bus for execution.
+    auto globals = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
+    auto channel = std::make_shared<retroshelf::EeGifDmacChannel2>(runtime, *globals);
     retroshelf::SystemBus execution_bus(ram);
+    std::string error;
     check(execution_bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
                                  retroshelf::EeGifDmacChannel2::RegisterSize,
                                  channel, &error),
-          "map executable GIF channel 2 device");
+          "map GIF channel 2 register window");
     check(execution_bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
                                  retroshelf::EeDmacGlobalRegisters::RegisterSize,
                                  globals, &error),
-          "map executable DMAC global device");
+          "map DMAC global register window");
 
     write_u32(execution_bus, retroshelf::EeDmacGlobalRegisters::RegisterBase, 1U);
     write_u32(execution_bus, retroshelf::EeGifDmacChannel2::RegisterBase + 0x10U, 0U);
@@ -95,7 +81,9 @@ int main() {
           "guest CHCR start completes the GIF DMA transfer");
     check(read_u32(execution_bus, retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U) & (1U << 2U),
           "GIF channel completion sets D_STAT channel 2 flag");
-    check(runtime.framebuffer().get_pixel(2, 2, *new retroshelf::GsFramebuffer::Rgba8{}),
+    retroshelf::GsFramebuffer::Rgba8 pixel{};
+    check(runtime.framebuffer().get_pixel(2, 2, pixel) && pixel.r == 255 &&
+              pixel.g == 0 && pixel.b == 0 && pixel.a == 255,
           "GIF DMA data reaches GS framebuffer renderer");
 
     // Enable channel-2's D_STAT mask; INT1 becomes pending only after both
