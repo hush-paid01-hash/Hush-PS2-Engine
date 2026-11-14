@@ -434,7 +434,7 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
         const std::uint64_t lhs_high = reg_high(rs);
         const std::uint64_t rhs_low = reg(rt);
         const std::uint64_t rhs_high = reg_high(rt);
-        if (funct == 0x08U &&
+        if (funct == 0x28U &&
             (sub_op == 2U || sub_op == 6U || sub_op == 10U)) {
             // PCEQW/PCEQH/PCEQB compare every lane across the full 128-bit
             // GPR. Equal lanes become all ones at that lane width.
