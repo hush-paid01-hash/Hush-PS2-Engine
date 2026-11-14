@@ -120,7 +120,6 @@ int main() {
 
     // Enable channel-2's D_STAT mask; INT1 becomes pending only after both
     // the channel status flag and its mask are set.
-    std::vector<std::uint8_t> bytes(4);
     const auto write_mmio = [&bus](std::uint32_t address, std::uint32_t value) {
         std::vector<std::uint8_t> data(4);
         for (std::size_t i = 0; i < 4; ++i)
