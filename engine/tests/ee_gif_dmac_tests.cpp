@@ -135,9 +135,15 @@ int main() {
 
     // Global DMA disable must reject a new transfer and leave STR clear.
     write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase, 0U);
-    write_mmio(retroshelf::EeGifDmacChannel2::RegisterBase, 1U << 8U);
-    check((read_u32(bus, retroshelf::EeGifDmacChannel2::RegisterBase) &
-           (1U << 8U)) == 0U,
+    std::vector<std::uint8_t> disabled_start(4);
+    disabled_start[1] = 1U;
+    std::string disabled_error;
+    const bool disabled_accepted =
+        bus.write(retroshelf::EeGifDmacChannel2::RegisterBase,
+                  disabled_start, &disabled_error);
+    check(!disabled_accepted && !disabled_error.empty() &&
+              (read_u32(bus, retroshelf::EeGifDmacChannel2::RegisterBase) &
+               (1U << 8U)) == 0U,
           "globally disabled DMAC rejects channel start and clears STR");
 
     return failures == 0 ? 0 : 1;
