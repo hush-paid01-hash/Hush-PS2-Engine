@@ -4,6 +4,7 @@
 #include "retroshelf/cpu.hpp"
 #include "retroshelf/gs_framebuffer.hpp"
 #include "retroshelf/ee_gif_gs_runtime.hpp"
+#include "retroshelf/ee_gif_dmac.hpp"
 #include "retroshelf/ee_execution_runner.hpp"
 #include "retroshelf/gs_gif_pipeline.hpp"
 #include "retroshelf/gs_packet_processor.hpp"
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -180,6 +182,20 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
                       retroshelf::EeTimerBlock::RegisterSize, timers, &error) ||
         !bus.map_mmio(retroshelf::EeInterruptController::RegisterBase,
                       retroshelf::EeInterruptController::RegisterSize, intc, &error))
+        return 0;
+
+    // Expose the first implemented guest-programmable DMA path. The GIF
+    // runtime reads the same EE memory map while the CPU sees channel/global
+    // registers through this execution bus. INT1 remains a polled D_STAT
+    // status source until the CPU interrupt model supports the separate line.
+    auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
+    auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
+    auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
+        *gif_runtime, *dmac_global);
+    if (!bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
+                      retroshelf::EeGifDmacChannel2::RegisterSize, gif_channel, &error) ||
+        !bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
+                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error))
         return 0;
 
     const std::uint64_t budget = std::min<std::uint64_t>(instruction_budget, 1000000U);
