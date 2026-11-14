@@ -158,10 +158,11 @@ bool EeGifDmacChannel2::write(std::uint32_t offset,
         if ((value & StartBit) != 0U) {
             error_.clear();
             if (!global_.dma_enabled()) {
+                // Reject the start by clearing STR but still complete the
+                // register write so guest code can observe the resulting state.
                 error_ = "EE DMAC is globally disabled (D_CTRL.DMAE=0)";
                 regs.chcr &= ~StartBit;
-                if (error) *error = error_;
-                return false;
+                break;
             }
             // The current GIF DMA engine implements EE RAM -> GIF normal and
             // source-chain modes synchronously. Direction, interleave, MFIFO,
