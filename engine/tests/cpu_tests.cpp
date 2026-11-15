@@ -1379,7 +1379,7 @@ int main() {
     cpu.set_reg(2, 0x0000000500000000ULL);
     cpu.set_reg_high(2, 0x0000000000000001ULL);
     const std::uint32_t pcgtw = (0x1CU << 26U) | (1U << 21U) | (2U << 16U) |
-                                (3U << 11U) | (2U << 6U) | 0x28U;
+                                (3U << 11U) | (2U << 6U) | 0x08U;
     check(cpu.step(pcgtw) &&
               cpu.reg(3) == 0xFFFFFFFF00000000ULL &&
               cpu.reg_high(3) == 0x0000000000000000ULL,
@@ -1388,14 +1388,14 @@ int main() {
     cpu.set_reg(1, 0x0000000000018000ULL);
     cpu.set_reg(2, 0x0000000000000001ULL);
     const std::uint32_t pcgth = (0x1CU << 26U) | (1U << 21U) | (2U << 16U) |
-                                (3U << 11U) | (6U << 6U) | 0x28U;
+                                (3U << 11U) | (6U << 6U) | 0x08U;
     check(cpu.step(pcgth) && cpu.reg(3) == 0x00000000FFFF0000ULL,
           "PCGTH compares signed halfwords independently and recognizes a positive lane");
     cpu.reset();
     cpu.set_reg(1, 0x000000000000007FULL);
     cpu.set_reg(2, 0x0000000000000001ULL);
     const std::uint32_t pcgtb = (0x1CU << 26U) | (1U << 21U) | (2U << 16U) |
-                                (3U << 11U) | (10U << 6U) | 0x28U;
+                                (3U << 11U) | (10U << 6U) | 0x08U;
     check(cpu.step(pcgtb) && cpu.reg(3) == 0x00000000000000FFULL,
           "PCGTB emits an all-ones byte for a positive signed comparison");
 
