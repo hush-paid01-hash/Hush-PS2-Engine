@@ -85,6 +85,43 @@ int main() {
                          1U), &error) &&
               (timers->pending_interrupts() & (1U << 1U)) == 0U,
           "writing OVFF clears overflow interrupt without disabling timer");
+    // A compare value of zero coincides with the 16-bit overflow edge.
+    // Both status flags must latch, and clearing either one must leave the
+    // other channel interrupt source asserted.
+    const auto ch2 = base + 2U * retroshelf::EeTimerBlock::ChannelStride;
+    check(bus.write(ch2 + retroshelf::EeTimerBlock::CompareOffset, word(0), &error) &&
+              bus.write(ch2 + retroshelf::EeTimerBlock::CountOffset, word(0xFFFF), &error) &&
+              bus.write(ch2 + retroshelf::EeTimerBlock::ModeOffset,
+                        word(retroshelf::EeTimerBlock::ModeCountEnable |
+                             retroshelf::EeTimerBlock::ModeCompareEnable |
+                             retroshelf::EeTimerBlock::ModeOverflowEnable), &error),
+          "arms simultaneous compare-zero and overflow events");
+    timers->advance_cycles(1);
+    const std::uint32_t both_timer_flags =
+        retroshelf::EeTimerBlock::ModeCompareFlag |
+        retroshelf::EeTimerBlock::ModeOverflowFlag;
+    check(timers->count(2) == 0 &&
+              (timers->mode(2) & both_timer_flags) == both_timer_flags,
+          "counter rollover at compare zero latches EQUF and OVFF together");
+    check((timers->pending_interrupts() & (1U << 2U)) != 0U,
+          "simultaneous compare and overflow share the channel interrupt request");
+    check(bus.write(ch2 + retroshelf::EeTimerBlock::ModeOffset,
+                    word(retroshelf::EeTimerBlock::ModeCountEnable |
+                         retroshelf::EeTimerBlock::ModeCompareEnable |
+                         retroshelf::EeTimerBlock::ModeOverflowEnable |
+                         retroshelf::EeTimerBlock::ModeCompareFlag), &error) &&
+              (timers->mode(2) & retroshelf::EeTimerBlock::ModeOverflowFlag) != 0U &&
+              (timers->mode(2) & retroshelf::EeTimerBlock::ModeCompareFlag) == 0U &&
+              (timers->pending_interrupts() & (1U << 2U)) != 0U,
+          "clearing EQUF preserves OVFF and its pending interrupt");
+    check(bus.write(ch2 + retroshelf::EeTimerBlock::ModeOffset,
+                    word(retroshelf::EeTimerBlock::ModeCountEnable |
+                         retroshelf::EeTimerBlock::ModeCompareEnable |
+                         retroshelf::EeTimerBlock::ModeOverflowEnable |
+                         retroshelf::EeTimerBlock::ModeOverflowFlag), &error) &&
+              (timers->pending_interrupts() & (1U << 2U)) == 0U,
+          "clearing the remaining OVFF deasserts the timer channel request");
+
     std::vector<std::uint8_t> invalid_read;
     check(!bus.read(base + 4U, 4, invalid_read, &error) && invalid_read.empty(),
           "rejects unimplemented register offsets");
