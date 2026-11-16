@@ -18,6 +18,8 @@ private func retroshelfEngineTracePC(_ index: UInt64) -> UInt64
 private func retroshelfEngineTraceInstruction(_ index: UInt64) -> UInt32
 @_silgen_name("retroshelf_engine_trace_fetched")
 private func retroshelfEngineTraceFetched(_ index: UInt64) -> Int32
+@_silgen_name("retroshelf_engine_last_execution_message")
+private func retroshelfEngineLastExecutionMessage() -> UnsafePointer<CChar>?
 @_silgen_name("retroshelf_engine_run_disc_subset")
 private func retroshelfEngineRunDiscSubset(_ path: UnsafePointer<CChar>?, _ budget: UInt64, _ executed: UnsafeMutablePointer<UInt64>?, _ pc: UnsafeMutablePointer<UInt64>?, _ reason: UnsafeMutablePointer<Int32>?) -> Int32
 @_silgen_name("retroshelf_engine_run_bios_reset_vector")
@@ -43,6 +45,7 @@ struct EngineExecutionReport {
     let instructionsExecuted: UInt64
     let finalPC: UInt64
     let stopReason: Int32
+    let executionMessage: String
     let trace: [EngineTraceEntry]
 
     var traceSummary: String {
@@ -110,7 +113,7 @@ enum EngineBridge {
                 fetched: retroshelfEngineTraceFetched(i) == 1
             )
         }
-        return EngineExecutionReport(instructionsExecuted: executed, finalPC: pc, stopReason: reason, trace: trace)
+        return EngineExecutionReport(instructionsExecuted: executed, finalPC: pc, stopReason: reason, executionMessage: retroshelfEngineLastExecutionMessage().map { String(cString: $0) } ?? "", trace: trace)
     }
     static func runBIOSResetVectorSmokeTest(at url: URL, instructionBudget: UInt64 = 10_000) -> EngineExecutionReport? {
         var executed: UInt64 = 0
