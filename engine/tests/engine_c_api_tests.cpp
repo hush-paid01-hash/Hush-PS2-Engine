@@ -90,7 +90,7 @@ int main() {
     const auto unsupportedBios = biosDir / "unsupported-bios.bin";
     {
         std::ofstream out(unsupportedBios, std::ios::binary);
-        const std::uint32_t word = 0x0000003FU; // SPECIAL funct=0x3F is unimplemented
+        const std::uint32_t word = 0x0000003DU; // SPECIAL funct=0x3D is unimplemented
         out.put(static_cast<char>(word & 0xFFU));
         out.put(static_cast<char>((word >> 8U) & 0xFFU));
         out.put(static_cast<char>((word >> 16U) & 0xFFU));
