@@ -13,6 +13,28 @@ permissions:
   contents: read
 
 jobs:
+  engine-tests:
+    name: Build and test native PS2 engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++
+
+      - name: Configure native engine
+        run: cmake -S engine -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile native engine and tests
+        run: cmake --build build --parallel 2
+
+      - name: Run engine regression tests
+        run: ctest --test-dir build --output-on-failure
+
   docker:
     name: Build and publish Hush engine container
     runs-on: ubuntu-latest
