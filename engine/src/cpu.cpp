@@ -39,7 +39,7 @@ bool normalize_ee_address(std::uint64_t address, std::uint32_t& normalized) {
 Cpu::Cpu() { reset(); }
 void Cpu::reset() {
     gpr_.fill(0); gpr_high_.fill(0); memory_.fill(0); vu0_vf_ = {}; vu0_control_.fill(0); vu0_vf_[0][3] = 0x3F800000U; active_ram_ = nullptr; active_ram_base_ = 0; active_ee_memory_ = nullptr; active_system_bus_ = nullptr; pc_ = 0; next_pc_ = 4;
-    delay_slot_pending_ = false; delay_branch_pc_ = 0; cop0_regs_.fill(0); status_ = 0; cause_ = 0; epc_ = 0; bad_vaddr_ = 0; hi_ = 0; lo_ = 0; sa_ = 0;
+    delay_slot_pending_ = false; delay_branch_pc_ = 0; cop0_regs_.fill(0); cop0_regs_[1] = 47U; status_ = 0; cause_ = 0; epc_ = 0; bad_vaddr_ = 0; hi_ = 0; lo_ = 0; sa_ = 0;
 }
 std::uint64_t Cpu::reg(std::size_t index) const { return index < RegisterCount ? gpr_[index] : 0; }
 void Cpu::set_reg(std::size_t index, std::uint64_t value) {
@@ -76,6 +76,16 @@ void Cpu::advance_ee_cycles(std::uint64_t cycles) {
         : static_cast<std::uint32_t>(compare - count);
     if (cycles >= distance) cause_ |= CauseTimerInterruptPending;
     cop0_regs_[9] = static_cast<std::uint32_t>(count + cycles);
+
+    // The EE has 48 TLB entries. Random walks downward through [Wired, 47]
+    // once per modeled EE cycle, wrapping to 47 at the Wired boundary.
+    constexpr std::uint32_t TlbEntryCount = 48U;
+    const std::uint32_t wired = std::min(cop0_regs_[6], TlbEntryCount - 1U);
+    const std::uint32_t range = TlbEntryCount - wired;
+    const std::uint32_t random = std::clamp(cop0_regs_[1], wired, TlbEntryCount - 1U);
+    const std::uint32_t offset = (random - wired + range -
+        static_cast<std::uint32_t>(cycles % range)) % range;
+    cop0_regs_[1] = wired + offset;
 }
 
 void Cpu::raise_exception(std::uint32_t code, std::uint64_t fault_pc, bool in_delay_slot) {
@@ -995,7 +1005,7 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
             case 9: case 10: case 11: case 16: case 23: case 24:
             case 25: case 28: case 29: case 30:
                 value = cop0_regs_[index]; return true;
-            case 1: value = cop0_regs_[index]; return true; // Random is a placeholder until cycle timing is modelled.
+            case 1: value = cop0_regs_[1]; return true; // Random
             case 15: value = cop0_regs_[index]; return true; // PRId placeholder
             case 12: value = status_; return true; // Status
             case 13: value = cause_; return true;  // Cause
@@ -1014,10 +1024,14 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
         if (rs == 0x04) { // MTC0 rt, rd (only select 0 is currently modelled)
             if ((instruction & 0x7FFU) != 0U) return unsupported();
             switch (rd) {
-            case 0: case 2: case 3: case 4: case 5: case 6: case 7:
+            case 0: case 2: case 3: case 4: case 5: case 7:
             case 10: case 16: case 23: case 24:
             case 25: case 28: case 29: case 30:
                 cop0_regs_[rd] = static_cast<std::uint32_t>(reg(rt)); return true;
+            case 6:
+                cop0_regs_[6] = std::min(static_cast<std::uint32_t>(reg(rt)), 47U);
+                cop0_regs_[1] = 47U;
+                return true; // Wired resets Random
             case 9: cop0_regs_[9] = static_cast<std::uint32_t>(reg(rt)); return true; // Count
             case 11:
                 cop0_regs_[11] = static_cast<std::uint32_t>(reg(rt)); // Compare
