@@ -1274,7 +1274,7 @@ int main() {
     check(random_cpu.step((0x10U << 26U) | (1U << 16U) | (1U << 11U)) &&
               random_cpu.reg(1) == 47U,
           "writing Wired resets Random to the final TLB entry");
-    random_cpu.advance_ee_cycles(37U);
+    random_cpu.advance_ee_cycles(38U);
     check(random_cpu.step((0x10U << 26U) | (1U << 16U) | (1U << 11U)) &&
               random_cpu.reg(1) == 47U,
           "EE Random wraps at Wired without entering wired TLB slots");
