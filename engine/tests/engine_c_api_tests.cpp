@@ -16,6 +16,8 @@ int main() {
     assert(retroshelf_engine_trace_pc(0U) == 0U);
     assert(retroshelf_engine_trace_instruction(0U) == 0U);
     assert(retroshelf_engine_trace_fetched(0U) == -1);
+    assert(retroshelf_engine_last_execution_message() != nullptr);
+    assert(std::strlen(retroshelf_engine_last_execution_message()) == 0U);
 
     // The exported framebuffer preview should be a bounded RGBA test frame.
     assert(retroshelf_engine_framebuffer_pixels() == nullptr);
@@ -74,6 +76,7 @@ int main() {
     assert(biosInstructions == 2);
     assert(biosPC == 0xBFC00008ULL);
     assert(biosReason == 0);
+    assert(std::strstr(retroshelf_engine_last_execution_message(), "Instruction budget reached") != nullptr);
     assert(retroshelf_engine_trace_count() == 2U);
     assert(retroshelf_engine_trace_pc(0U) == 0xBFC00000ULL);
     assert(retroshelf_engine_trace_instruction(0U) == ((0x09U << 26U) | (8U << 16U) | 7U));
