@@ -86,6 +86,23 @@ int main() {
     assert(retroshelf_engine_trace_pc(1U) == 0xBFC00004ULL);
     assert(retroshelf_engine_trace_instruction(1U) == ((0x09U << 26U) | (9U << 16U) | 5U));
     assert(retroshelf_engine_trace_fetched(1U) == 1);
+    // An unsupported guest opcode must be surfaced to the native frontend.
+    const auto unsupportedBios = biosDir / "unsupported-bios.bin";
+    {
+        std::ofstream out(unsupportedBios, std::ios::binary);
+        const std::uint32_t word = 0xFFFFFFFFU;
+        out.put(static_cast<char>(word & 0xFFU));
+        out.put(static_cast<char>((word >> 8U) & 0xFFU));
+        out.put(static_cast<char>((word >> 16U) & 0xFFU));
+        out.put(static_cast<char>((word >> 24U) & 0xFFU));
+    }
+    assert(retroshelf_engine_run_bios_reset_vector(
+        unsupportedBios.string().c_str(), 10, &biosInstructions, &biosPC, &biosReason) == 1);
+    assert(biosReason == 1);
+    assert(std::strstr(retroshelf_engine_last_execution_message(), "Unsupported instruction") != nullptr);
+    assert(retroshelf_engine_trace_count() == 1U);
+    assert(retroshelf_engine_trace_fetched(0U) == 1);
+
     biosInstructions = 99;
     biosPC = 99;
     biosReason = 99;
