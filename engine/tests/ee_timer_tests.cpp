@@ -65,12 +65,26 @@ int main() {
     timers->advance_cycles(1);
     check(timers->count(1) == 1, "divide-by-16 timer advances on sixteenth bus cycle");
 
+    check(bus.write(ch1 + retroshelf::EeTimerBlock::ModeOffset,
+                    word(retroshelf::EeTimerBlock::ModeCountEnable |
+                         retroshelf::EeTimerBlock::ModeOverflowEnable |
+                         1U), &error),
+          "enables overflow interrupt on timer channel 1");
     check(bus.write(ch1 + retroshelf::EeTimerBlock::CountOffset, word(0xFFFF), &error),
           "loads 16-bit timer counter");
     timers->advance_cycles(16);
     check(timers->count(1) == 0 &&
               (timers->mode(1) & retroshelf::EeTimerBlock::ModeOverflowFlag) != 0U,
           "counter wrap sets OVFF");
+    check((timers->pending_interrupts() & (1U << 1U)) != 0U,
+          "enabled overflow flag asserts timer channel 1 interrupt request");
+    check(bus.write(ch1 + retroshelf::EeTimerBlock::ModeOffset,
+                    word(retroshelf::EeTimerBlock::ModeCountEnable |
+                         retroshelf::EeTimerBlock::ModeOverflowEnable |
+                         retroshelf::EeTimerBlock::ModeOverflowFlag |
+                         1U), &error) &&
+              (timers->pending_interrupts() & (1U << 1U)) == 0U,
+          "writing OVFF clears overflow interrupt without disabling timer");
     std::vector<std::uint8_t> invalid_read;
     check(!bus.read(base + 4U, 4, invalid_read, &error) && invalid_read.empty(),
           "rejects unimplemented register offsets");
