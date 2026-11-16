@@ -28,6 +28,8 @@ public:
     bool step_from_ee_bus(Ps2EeMemoryMap& memory, SystemBus& bus,
                           std::string* error = nullptr);
     void set_ee_interrupt_pending(bool pending);
+    // Advance the simplified EE Count register in deterministic runtime cycles.
+    void advance_ee_cycles(std::uint64_t cycles);
 
     std::uint64_t reg(std::size_t index) const;
     void set_reg(std::size_t index, std::uint64_t value);
@@ -42,6 +44,7 @@ public:
     static constexpr std::uint32_t StatusExl = 1U << 1U;
     static constexpr std::uint32_t StatusErl = 1U << 2U;
     static constexpr std::uint32_t CauseEeInterruptPending = 1U << 10U;
+    static constexpr std::uint32_t CauseTimerInterruptPending = 1U << 15U;
     static constexpr std::uint32_t ExcSyscall = 8;
     static constexpr std::uint32_t ExcBreakpoint = 9;
     static constexpr std::uint32_t ExcAddressErrorLoad = 4;
