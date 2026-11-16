@@ -1015,7 +1015,7 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
             if ((instruction & 0x7FFU) != 0U) return unsupported();
             switch (rd) {
             case 0: case 2: case 3: case 4: case 5: case 6: case 7:
-            case 9: case 10: case 11: case 16: case 23: case 24:
+            case 10: case 16: case 23: case 24:
             case 25: case 28: case 29: case 30:
                 cop0_regs_[rd] = static_cast<std::uint32_t>(reg(rt)); return true;
             case 9: cop0_regs_[9] = static_cast<std::uint32_t>(reg(rt)); return true; // Count
