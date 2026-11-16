@@ -53,8 +53,9 @@ public:
     static constexpr std::uint32_t ExcReservedInstruction = 10;
     static constexpr std::uint32_t ExcOverflow = 12;
     static constexpr std::uint32_t ExcTrap = 13;
-    // Simplified: always 0x80000180 (no BEV/TLB vector selection).
+    // General exception vectors for normal and bootstrap (BEV) operation.
     static constexpr std::uint64_t GeneralExceptionVector = 0x80000180ULL;
+    static constexpr std::uint64_t BootstrapGeneralExceptionVector = 0xBFC00380ULL;
 
     std::uint32_t cop0_status() const;
     std::uint32_t cop0_cause() const;
