@@ -30,6 +30,7 @@ namespace {
 retroshelf::GsFramebuffer g_preview_framebuffer;
 bool g_preview_ready = false;
 std::vector<retroshelf::EeExecutionRunner::TraceEntry> g_last_trace;
+std::string g_last_execution_message;
 
 void write_u64_le(std::vector<std::uint8_t>& bytes, std::size_t offset,
                   std::uint64_t value) {
@@ -154,6 +155,7 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
     const char *path, uint64_t instruction_budget,
     uint64_t *instructions_executed, uint64_t *final_pc, int32_t *stop_reason) {
     g_last_trace.clear();
+    g_last_execution_message.clear();
     if (instructions_executed) *instructions_executed = 0;
     if (final_pc) *final_pc = 0;
     if (stop_reason) *stop_reason = -1;
@@ -204,6 +206,7 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
     // devices connected. This remains a bounded smoke test, not a full BIOS boot.
     const auto result = runner.run_from_bios_reset_vector(static_cast<std::size_t>(budget));
     g_last_trace = result.trace;
+    g_last_execution_message = result.message;
 
     if (instructions_executed)
         *instructions_executed = static_cast<std::uint64_t>(result.instructions_executed);
@@ -241,6 +244,10 @@ extern "C" int32_t retroshelf_engine_trace_fetched(uint64_t index) {
     return g_last_trace[static_cast<std::size_t>(index)].fetched ? 1 : 0;
 }
 
+extern "C" const char *retroshelf_engine_last_execution_message(void) {
+    return g_last_execution_message.c_str();
+}
+
 extern "C" int32_t retroshelf_engine_run_disc_subset(
     const char *path,
     uint64_t instruction_budget,
@@ -265,6 +272,7 @@ extern "C" int32_t retroshelf_engine_run_disc_subset(
     const auto result = retroshelf::load_and_execute_ps2_disc(disc, memory, cpu, budget);
     if (!result.image_loaded) return 0;
     g_last_trace = result.execution.trace;
+    g_last_execution_message = result.execution.message;
 
     if (instructions_executed)
         *instructions_executed = static_cast<uint64_t>(result.execution.instructions_executed);
