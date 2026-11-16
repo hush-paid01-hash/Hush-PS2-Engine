@@ -174,5 +174,35 @@ int main() {
               ee_cpu.cop0_epc() == program + 8U,
           "timer IRQ is latched in INTC and records the interrupted PC");
 
+    // COP0 Count/Compare must also reach the CPU interrupt gate through
+    // the runner, independently of the four external EE timer channels.
+    retroshelf::Ps2EeMemoryMap count_memory(64U * 1024U);
+    retroshelf::SystemBus count_bus(count_memory);
+    retroshelf::Cpu count_cpu;
+    constexpr std::uint32_t count_program = 0x80002000U;
+    count_cpu.set_reg(8, 3U);
+    count_cpu.set_reg(9, 0x00008001U); // Status.IE + Status.IM7
+    const std::uint32_t count_instructions[] = {
+        (0x10U << 26U) | (4U << 21U) | (8U << 16U) | (11U << 11U), // MTC0 r8, Compare
+        (0x10U << 26U) | (4U << 21U) | (9U << 16U) | (12U << 11U), // MTC0 r9, Status
+        0U, 0U, 0U // Count reaches Compare after third instruction
+    };
+    for (std::size_t i = 0; i < 5U; ++i)
+        check(count_memory.write(count_program + static_cast<std::uint32_t>(i * 4U),
+                                 4U, count_instructions[i], &error),
+              "writes COP0 Count/Compare runner instruction");
+    check(count_memory.write(static_cast<std::uint32_t>(retroshelf::Cpu::GeneralExceptionVector),
+                             4U, 0U, &error),
+          "maps COP0 timer exception vector");
+    retroshelf::EeExecutionRunner count_runner(count_cpu, count_memory, count_bus);
+    const auto count_result = count_runner.run(5U);
+    check(count_result.trace.size() == 5U &&
+              count_result.trace[3].exception_taken &&
+              count_result.trace[3].exception_code == 0U,
+          "COP0 Count/Compare raises an interrupt through the EE runner");
+    check(count_cpu.cop0_epc() == count_program + 12U &&
+              (count_cpu.cop0_cause() & retroshelf::Cpu::CauseTimerInterruptPending) != 0U,
+          "COP0 timer interrupt records EPC and retains IP7 pending state");
+
     return failures == 0 ? 0 : 1;
 }
