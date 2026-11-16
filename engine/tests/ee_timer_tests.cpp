@@ -196,6 +196,17 @@ int main() {
           "maps COP0 timer exception vector");
     retroshelf::EeExecutionRunner count_runner(count_cpu, count_memory, count_bus);
     const auto count_result = count_runner.run(5U);
+    std::cerr << "COUNTDBG trace=" << count_result.trace.size()
+              << " pc=" << std::hex << count_cpu.pc()
+              << " count=" << count_cpu.reg(0)
+              << " cause=" << count_cpu.cop0_cause()
+              << " status=" << count_cpu.cop0_status()
+              << " epc=" << count_cpu.cop0_epc() << std::dec << "\\n";
+    for (std::size_t debug_i = 0; debug_i < count_result.trace.size(); ++debug_i)
+        std::cerr << "COUNTDBG[" << debug_i << "] pc=" << std::hex
+                  << count_result.trace[debug_i].pc << " ins="
+                  << count_result.trace[debug_i].instruction << " ex="
+                  << count_result.trace[debug_i].exception_taken << std::dec << "\\n";
     check(count_result.trace.size() == 5U &&
               count_result.trace[3].exception_taken &&
               count_result.trace[3].exception_code == 0U,
