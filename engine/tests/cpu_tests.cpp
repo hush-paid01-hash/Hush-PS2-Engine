@@ -1236,15 +1236,15 @@ int main() {
     count_compare_cpu.advance_ee_cycles(2U);
     check(count_compare_cpu.step((0x10U << 26U) | (9U << 16U) | (9U << 11U)) &&
               count_compare_cpu.reg(9) == 2U &&
-              (count_compare_cpu.cop0_cause() & Cpu::CauseTimerInterruptPending) == 0U,
+              (count_compare_cpu.cop0_cause() & retroshelf::Cpu::CauseTimerInterruptPending) == 0U,
           "COP0 Count advances without raising IP7 before Compare");
     count_compare_cpu.advance_ee_cycles(1U);
-    check((count_compare_cpu.cop0_cause() & Cpu::CauseTimerInterruptPending) != 0U,
+    check((count_compare_cpu.cop0_cause() & retroshelf::Cpu::CauseTimerInterruptPending) != 0U,
           "COP0 Count equality with Compare latches timer interrupt IP7");
     count_compare_cpu.set_reg(8, 9U);
     check(count_compare_cpu.step((0x10U << 26U) | (4U << 21U) |
                                  (8U << 16U) | (11U << 11U)) &&
-              (count_compare_cpu.cop0_cause() & Cpu::CauseTimerInterruptPending) == 0U,
+              (count_compare_cpu.cop0_cause() & retroshelf::Cpu::CauseTimerInterruptPending) == 0U,
           "writing COP0 Compare clears the timer interrupt pending bit");
     count_compare_cpu.set_reg(8, 0xFFFFFFFEU);
     check(count_compare_cpu.step((0x10U << 26U) | (4U << 21U) |
@@ -1255,7 +1255,7 @@ int main() {
                                  (8U << 16U) | (11U << 11U)),
           "MTC0 programs Compare across Count wraparound");
     count_compare_cpu.advance_ee_cycles(3U);
-    check((count_compare_cpu.cop0_cause() & Cpu::CauseTimerInterruptPending) != 0U,
+    check((count_compare_cpu.cop0_cause() & retroshelf::Cpu::CauseTimerInterruptPending) != 0U,
           "COP0 Count detects Compare equality across 32-bit wraparound");
 
     // Reset must clear the newly modelled COP0 bank as well as legacy state.
