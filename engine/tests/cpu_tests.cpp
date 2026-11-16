@@ -1258,6 +1258,27 @@ int main() {
     check((count_compare_cpu.cop0_cause() & retroshelf::Cpu::CauseTimerInterruptPending) != 0U,
           "COP0 Count detects Compare equality across 32-bit wraparound");
 
+    // EE COP0 Random walks the 48-entry TLB replacement range [Wired, 47].
+    retroshelf::Cpu random_cpu;
+    check(random_cpu.step((0x10U << 26U) | (1U << 16U) | (1U << 11U)) &&
+              random_cpu.reg(1) == 47U,
+          "MFC0 Random starts at the final EE TLB entry");
+    random_cpu.advance_ee_cycles(1U);
+    check(random_cpu.step((0x10U << 26U) | (1U << 16U) | (1U << 11U)) &&
+              random_cpu.reg(1) == 46U,
+          "EE Random decrements once per modeled cycle");
+    random_cpu.set_reg(8, 10U);
+    check(random_cpu.step((0x10U << 26U) | (4U << 21U) |
+                          (8U << 16U) | (6U << 11U)),
+          "MTC0 programs the EE Wired boundary");
+    check(random_cpu.step((0x10U << 26U) | (1U << 16U) | (1U << 11U)) &&
+              random_cpu.reg(1) == 47U,
+          "writing Wired resets Random to the final TLB entry");
+    random_cpu.advance_ee_cycles(37U);
+    check(random_cpu.step((0x10U << 26U) | (1U << 16U) | (1U << 11U)) &&
+              random_cpu.reg(1) == 47U,
+          "EE Random wraps at Wired without entering wired TLB slots");
+
     // Reset must clear the newly modelled COP0 bank as well as legacy state.
     cop0_bank_cpu.reset();
     check(cop0_bank_cpu.step((0x10U << 26U) | (9U << 16U) | (10U << 11U)) &&
