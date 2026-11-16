@@ -277,5 +277,54 @@ int main() {
     assert((device_timers->pending_interrupts() & 1U) != 0U);
     assert((device_intc->status() & (1U << 9U)) != 0U);
 
+
+    // End-to-end timer IRQ delivery: timer compare -> INTC status/mask ->
+    // CPU Cause.IP -> COP0 Status mask -> general exception vector.
+    retroshelf::Ps2EeMemoryMap irq_memory(64U * 1024U);
+    retroshelf::Cpu irq_cpu;
+    retroshelf::SystemBus irq_bus(irq_memory);
+    auto irq_intc = std::make_shared<retroshelf::EeInterruptController>();
+    auto irq_timers = std::make_shared<retroshelf::EeTimerBlock>();
+    assert(irq_bus.map_mmio(retroshelf::EeTimerBlock::RegisterBase,
+                            retroshelf::EeTimerBlock::RegisterSize,
+                            irq_timers, &error));
+    assert(irq_bus.map_mmio(retroshelf::EeInterruptController::RegisterBase,
+                            retroshelf::EeInterruptController::RegisterSize,
+                            irq_intc, &error));
+    constexpr std::uint32_t irq_start = 0x80003000U;
+    const std::uint32_t irq_program[] = {
+        (0x0FU << 26U) | (8U << 16U) | 0x1000U,             // LUI t0, timer base
+        (0x09U << 26U) | (9U << 16U) | 1U,                  // ADDIU t1, zero, 1
+        (0x2BU << 26U) | (8U << 21U) | (9U << 16U) | 0x20U,// SW t1, COMP
+        (0x09U << 26U) | (9U << 16U) | 0x180U,             // COUNT + COMP IRQ enable
+        (0x2BU << 26U) | (8U << 21U) | (9U << 16U) | 0x10U,// SW t1, MODE
+        (0x0FU << 26U) | (11U << 16U) | 0x1000U,           // LUI t3, INTC segment
+        (0x0DU << 26U) | (11U << 21U) | (11U << 16U) | 0xF010U, // INTC_MASK
+        (0x09U << 26U) | (12U << 16U) | 0x0200U,           // INTC line 9 mask
+        (0x2BU << 26U) | (11U << 21U) | (12U << 16U),      // SW t4, INTC_MASK
+        (0x09U << 26U) | (10U << 16U) | 0x0401U,           // IE + IM10
+        (0x10U << 26U) | (0x04U << 21U) | (10U << 16U) | (12U << 11U), // MTC0 Status
+        (0x09U << 26U) | (17U << 16U) | 77U                // interrupted marker
+    };
+    for (std::size_t i = 0; i < sizeof(irq_program) / sizeof(irq_program[0]); ++i)
+        assert(irq_memory.write(irq_start + static_cast<std::uint32_t>(i * 4U),
+                                4U, irq_program[i], &error));
+    assert(irq_memory.write(exception_vector, 4,
+                            (0x09U << 26U) | (11U << 16U) | 99U, &error));
+    irq_cpu.set_pc(irq_start);
+    retroshelf::EeExecutionRunner irq_runner(irq_cpu, irq_memory, irq_bus,
+                                              *irq_intc, *irq_timers);
+    const auto irq_run = irq_runner.run(13U);
+    assert(irq_run.instructions_executed == 13U);
+    assert((irq_intc->status() & (1U << 9U)) != 0U);
+    assert(irq_run.trace.size() == 13U);
+    assert(irq_run.trace[11].pc == irq_start + 44U);
+    assert(irq_run.trace[11].exception_taken);
+    assert(irq_run.trace[11].exception_code == 0U);
+    assert(irq_run.trace[11].exception_epc == irq_start + 44U);
+    assert(irq_run.trace[12].pc == exception_vector);
+    assert(irq_cpu.reg(11U) == 99U); // handler ran
+    assert(irq_cpu.reg(17U) == 0U); // interrupted instruction did not run
+
     return 0;
 }
