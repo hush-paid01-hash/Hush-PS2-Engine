@@ -18,6 +18,8 @@ int main() {
     assert(retroshelf_engine_trace_fetched(0U) == -1);
     assert(retroshelf_engine_last_execution_message() != nullptr);
     assert(std::strlen(retroshelf_engine_last_execution_message()) == 0U);
+    assert(retroshelf_engine_last_execution_message() != nullptr);
+    assert(std::strlen(retroshelf_engine_last_execution_message()) == 0U);
 
     // The exported framebuffer preview should be a bounded RGBA test frame.
     assert(retroshelf_engine_framebuffer_pixels() == nullptr);
