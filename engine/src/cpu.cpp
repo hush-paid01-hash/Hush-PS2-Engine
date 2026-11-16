@@ -83,7 +83,9 @@ void Cpu::advance_ee_cycles(std::uint64_t cycles) {
     constexpr std::uint32_t TlbEntryCount = 48U;
     const std::uint32_t wired = std::min(cop0_regs_[6], TlbEntryCount - 1U);
     const std::uint32_t range = TlbEntryCount - wired;
-    const std::uint32_t random = std::clamp(cop0_regs_[1], wired, TlbEntryCount - 1U);
+    const std::uint32_t stored_random = cop0_regs_[1];
+    const std::uint32_t random = stored_random < wired ? wired :
+        (stored_random >= TlbEntryCount ? TlbEntryCount - 1U : stored_random);
     const std::uint32_t offset = (random - wired + range -
         static_cast<std::uint32_t>(cycles % range)) % range;
     cop0_regs_[1] = wired + offset;
