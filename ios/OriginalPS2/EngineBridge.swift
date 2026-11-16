@@ -65,7 +65,7 @@ struct EngineExecutionReport {
         case 2: reasonText = "invalid instruction fetch"
         default: reasonText = "unknown stop reason"
         }
-        return "Smoke test only: \(instructionsExecuted) instructions; PC 0x\(String(finalPC, radix: 16)); \(reasonText). Not gameplay."
+        return "Smoke test only: \(instructionsExecuted) instructions; PC 0x\(String(finalPC, radix: 16)); \(reasonText). \(executionMessage) Not gameplay."
     }
 }
 
@@ -132,7 +132,7 @@ enum EngineBridge {
                 fetched: retroshelfEngineTraceFetched(i) == 1
             )
         }
-        return EngineExecutionReport(instructionsExecuted: executed, finalPC: pc, stopReason: reason, trace: trace)
+        return EngineExecutionReport(instructionsExecuted: executed, finalPC: pc, stopReason: reason, executionMessage: retroshelfEngineLastExecutionMessage().map { String(cString: $0) } ?? "", trace: trace)
     }
     static var readinessMessage: String {
         canBootGames ? "Engine reports game boot support" : "\(statusMessage) (ABI v\(abiVersion))"
