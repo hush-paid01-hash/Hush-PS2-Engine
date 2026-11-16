@@ -52,6 +52,7 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
         // The subset interpreter has no per-opcode cycle table yet. Charge
         // one deterministic EE cycle per attempted instruction until timing
         // metadata exists; this wires events without claiming clock accuracy.
+        cpu_.advance_ee_cycles(1U);
         if (timers_ != nullptr) {
             timers_->advance_cycles(1U);
             if (intc_ != nullptr) {
