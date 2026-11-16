@@ -71,6 +71,8 @@ uint64_t retroshelf_engine_trace_count(void);
 uint64_t retroshelf_engine_trace_pc(uint64_t index);
 uint32_t retroshelf_engine_trace_instruction(uint64_t index);
 int32_t retroshelf_engine_trace_fetched(uint64_t index);
+/* Diagnostic message from the most recent bounded execution run. */
+const char *retroshelf_engine_last_execution_message(void);
 
 int32_t retroshelf_engine_run_disc_subset(const char *path,
                                           uint64_t instruction_budget,
