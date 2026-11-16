@@ -98,7 +98,8 @@ void Cpu::raise_exception(std::uint32_t code, std::uint64_t fault_pc, bool in_de
     }
     cause_ = (cause_ & ~(0x1FU << 2U)) | (code << 2U);
     status_ |= StatusExl;
-    pc_ = GeneralExceptionVector;
+    pc_ = (status_ & StatusBev) != 0U
+        ? BootstrapGeneralExceptionVector : GeneralExceptionVector;
     next_pc_ = pc_ + 4;
     delay_slot_pending_ = false;
 }
