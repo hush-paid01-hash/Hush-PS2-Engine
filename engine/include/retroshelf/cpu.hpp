@@ -43,6 +43,7 @@ public:
     static constexpr std::uint32_t StatusInterruptEnable = 1U << 0U;
     static constexpr std::uint32_t StatusExl = 1U << 1U;
     static constexpr std::uint32_t StatusErl = 1U << 2U;
+    static constexpr std::uint32_t StatusBev = 1U << 22U;
     static constexpr std::uint32_t CauseEeInterruptPending = 1U << 10U;
     static constexpr std::uint32_t CauseTimerInterruptPending = 1U << 15U;
     static constexpr std::uint32_t ExcSyscall = 8;
