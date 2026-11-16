@@ -255,6 +255,7 @@ extern "C" int32_t retroshelf_engine_run_disc_subset(
     uint64_t *final_pc,
     int32_t *stop_reason) {
     g_last_trace.clear();
+    g_last_execution_message.clear();
     if (instructions_executed) *instructions_executed = 0;
     if (final_pc) *final_pc = 0;
     if (stop_reason) *stop_reason = -1;
