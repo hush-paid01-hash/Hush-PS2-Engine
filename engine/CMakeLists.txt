@@ -150,15 +150,10 @@ target_include_directories(elf32-mips-tests PRIVATE include)
 target_compile_options(elf32-mips-tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME elf32-mips-tests COMMAND elf32-mips-tests)
 
-add_executable(ps2-boot-image-tests tests/ps2_boot_image_tests.cpp
-    src/iso9660_disc.cpp src/ps2_boot_config.cpp src/ps2_disc_boot_loader.cpp
-    src/elf32_mips.cpp src/ps2_boot_image.cpp src/ps2_disc_execution.cpp src/ee_execution_runner.cpp
-    src/ee_interrupt_controller.cpp src/ee_timer.cpp src/system_bus.cpp
-    src/elf_memory_staging.cpp src/elf_ram_loader.cpp src/cpu.cpp src/ps2_ee_memory_map.cpp)
-target_include_directories(ps2-boot-image-tests PRIVATE include)
+add_executable(ps2-boot-image-tests tests/ps2_boot_image_tests.cpp)
+target_link_libraries(ps2-boot-image-tests PRIVATE retroshelf_engine)
 target_compile_options(ps2-boot-image-tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME ps2-boot-image-tests COMMAND ps2-boot-image-tests)
-
 add_executable(elf-memory-staging-tests tests/elf_memory_staging_tests.cpp
     src/elf_memory_staging.cpp)
 target_include_directories(elf-memory-staging-tests PRIVATE include)
