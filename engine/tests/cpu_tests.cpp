@@ -66,6 +66,21 @@ int main() {
     error.clear();
     check(!cpu.step(0xFFFFFFFFU, &error), "unsupported instruction is rejected");
     check(!error.empty(), "unsupported instruction explains why");
+    check(cpu.pc() == retroshelf::Cpu::GeneralExceptionVector,
+          "general exception uses the normal vector when Status.BEV is clear");
+
+    // Bootstrap firmware runs with Status.BEV set and receives general
+    // exceptions from the ROM-resident vector at 0xBFC00380.
+    cpu.reset();
+    cpu.set_reg(1, retroshelf::Cpu::StatusBev);
+    constexpr std::uint32_t mtc0_status_bev =
+        (0x10U << 26U) | (0x04U << 21U) | (1U << 16U) | (12U << 11U);
+    check(cpu.step(mtc0_status_bev), "MTC0 enables bootstrap exception vectors");
+    error.clear();
+    check(!cpu.step(0x0000003DU, &error) &&
+              cpu.pc() == retroshelf::Cpu::BootstrapGeneralExceptionVector &&
+              cpu.next_pc() == retroshelf::Cpu::BootstrapGeneralExceptionVector + 4U,
+          "reserved instruction exception selects the BEV bootstrap vector");
 
     using retroshelf::Cpu;
     const auto itype = [](std::uint32_t op, std::uint32_t rs, std::uint32_t rt, std::int16_t imm) {
