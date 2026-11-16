@@ -67,6 +67,17 @@ void Cpu::set_ee_interrupt_pending(bool pending) {
     else cause_ &= ~CauseEeInterruptPending;
 }
 
+void Cpu::advance_ee_cycles(std::uint64_t cycles) {
+    if (cycles == 0U) return;
+    const std::uint32_t count = cop0_regs_[9];
+    const std::uint32_t compare = cop0_regs_[11];
+    const std::uint64_t distance = compare == count
+        ? (std::uint64_t{1} << 32U)
+        : static_cast<std::uint32_t>(compare - count);
+    if (cycles >= distance) cause_ |= CauseTimerInterruptPending;
+    cop0_regs_[9] = static_cast<std::uint32_t>(count + cycles);
+}
+
 void Cpu::raise_exception(std::uint32_t code, std::uint64_t fault_pc, bool in_delay_slot) {
     if ((status_ & StatusExl) == 0U) {
         if (in_delay_slot) { epc_ = delay_branch_pc_; cause_ |= CauseBd; }
@@ -1007,6 +1018,11 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
             case 9: case 10: case 11: case 16: case 23: case 24:
             case 25: case 28: case 29: case 30:
                 cop0_regs_[rd] = static_cast<std::uint32_t>(reg(rt)); return true;
+            case 9: cop0_regs_[9] = static_cast<std::uint32_t>(reg(rt)); return true; // Count
+            case 11:
+                cop0_regs_[11] = static_cast<std::uint32_t>(reg(rt)); // Compare
+                cause_ &= ~CauseTimerInterruptPending;
+                return true;
             case 12: status_ = static_cast<std::uint32_t>(reg(rt)); return true;
             case 13: { // Only software interrupt-pending bits IP0/IP1 are writable in Cause.
                 constexpr std::uint32_t SoftwareInterruptPending = 0x00000300U;
