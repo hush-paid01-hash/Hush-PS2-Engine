@@ -2,6 +2,7 @@
 #include "retroshelf/ps2_ee_memory_map.hpp"
 #include "retroshelf/system_bus.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <sstream>
 #include <vector>
