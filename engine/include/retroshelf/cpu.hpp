@@ -28,6 +28,8 @@ public:
     bool step_from_ee_bus(Ps2EeMemoryMap& memory, SystemBus& bus,
                           std::string* error = nullptr);
     void set_ee_interrupt_pending(bool pending);
+    // Enable the ROM-resident bootstrap exception vectors for BIOS startup.
+    void set_bootstrap_exception_vectors_enabled(bool enabled);
     // Advance the simplified EE Count register in deterministic runtime cycles.
     void advance_ee_cycles(std::uint64_t cycles);
 
