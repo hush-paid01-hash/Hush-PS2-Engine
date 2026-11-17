@@ -154,6 +154,35 @@ int main() {
     assert(returned.trace[5].pc == return_start + 4U && returned.trace[5].instruction == resume_marker);
     assert(returned.final_pc == return_start + 8U);
 
+    // BIOS reset starts with BEV enabled. An architected exception must
+    // dispatch to the ROM bootstrap vector and the runner must continue there.
+    retroshelf::Ps2EeMemoryMap bios_exception_memory(64U * 1024U);
+    std::vector<std::uint8_t> bios_exception_image(0x384U, 0U);
+    constexpr std::uint32_t bios_syscall = 0x0000000CU;
+    constexpr std::uint32_t bios_handler_addiu =
+        (0x09U << 26U) | (13U << 16U) | 77U;
+    for (unsigned i = 0; i < 4U; ++i) {
+        bios_exception_image[i] = static_cast<std::uint8_t>(bios_syscall >> (i * 8U));
+        bios_exception_image[0x380U + i] =
+            static_cast<std::uint8_t>(bios_handler_addiu >> (i * 8U));
+    }
+    assert(bios_exception_memory.load_bios_image(bios_exception_image, &error));
+    retroshelf::Cpu bios_exception_cpu;
+    retroshelf::EeExecutionRunner bios_exception_runner(
+        bios_exception_cpu, bios_exception_memory);
+    const auto bios_exception_run = bios_exception_runner.run_from_bios_reset_vector(2U);
+    assert(bios_exception_run.instructions_executed == 2U);
+    assert(bios_exception_run.reason ==
+           retroshelf::EeExecutionRunner::StopReason::InstructionLimit);
+    assert((bios_exception_cpu.cop0_status() & retroshelf::Cpu::StatusBev) != 0U);
+    assert(bios_exception_cpu.reg(13U) == 77U);
+    assert(bios_exception_run.trace.size() == 2U);
+    assert(bios_exception_run.trace[0].exception_taken);
+    assert(bios_exception_run.trace[0].next_pc ==
+           retroshelf::Cpu::BootstrapGeneralExceptionVector + 4U);
+    assert(bios_exception_run.trace[1].pc ==
+           retroshelf::Cpu::BootstrapGeneralExceptionVector);
+
     // Trace storage is bounded even when the execution budget is large.
     // Replace the unsupported instruction with a NOP so the run can continue.
     assert(memory.write(start + 12U, 4, 0U, &error));
