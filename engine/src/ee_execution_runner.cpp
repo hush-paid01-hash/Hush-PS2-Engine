@@ -112,10 +112,6 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
             result.instructions_executed = i;
             result.final_pc = cpu_.pc();
             result.message = error.empty() ? "EE instruction execution stopped." : error;
-            const std::uint64_t active_exception_vector =
-                (cpu_.cop0_status() & Cpu::StatusBev) != 0U
-                    ? Cpu::BootstrapGeneralExceptionVector
-                    : Cpu::GeneralExceptionVector;
             result.reason = !fetched
                 ? StopReason::InvalidInstructionFetch
                 : ((cpu_.pc() == active_exception_vector)
