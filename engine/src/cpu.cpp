@@ -63,6 +63,11 @@ bool Cpu::in_delay_slot() const { return delay_slot_pending_; }
 std::uint64_t Cpu::next_pc() const { return next_pc_; }
 std::uint64_t Cpu::hi() const { return hi_; }
 std::uint64_t Cpu::lo() const { return lo_; }
+void Cpu::set_bootstrap_exception_vectors_enabled(bool enabled) {
+    if (enabled) status_ |= StatusBev;
+    else status_ &= ~StatusBev;
+}
+
 void Cpu::set_ee_interrupt_pending(bool pending) {
     if (pending) cause_ |= CauseEeInterruptPending;
     else cause_ &= ~CauseEeInterruptPending;
