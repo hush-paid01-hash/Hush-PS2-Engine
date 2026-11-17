@@ -22,6 +22,7 @@ EeExecutionRunner::EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory,
 
 EeExecutionRunner::Result EeExecutionRunner::run_from_bios_reset_vector(std::size_t instruction_budget) {
     cpu_.reset();
+    cpu_.set_bootstrap_exception_vectors_enabled(true);
     cpu_.set_pc(BiosResetVector);
     return run(instruction_budget);
 }
@@ -63,9 +64,13 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
                 }
             }
         }
+        const std::uint64_t active_exception_vector =
+            (cpu_.cop0_status() & Cpu::StatusBev) != 0U
+                ? Cpu::BootstrapGeneralExceptionVector
+                : Cpu::GeneralExceptionVector;
         const bool exception_taken = !instruction_completed &&
-            instruction_pc != Cpu::GeneralExceptionVector &&
-            cpu_.pc() == Cpu::GeneralExceptionVector &&
+            instruction_pc != active_exception_vector &&
+            cpu_.pc() == active_exception_vector &&
             (cpu_.cop0_status() & Cpu::StatusExl) != 0U;
         const std::uint32_t cause = cpu_.cop0_cause();
         if (result.trace.size() < TraceCapacity) {
@@ -92,9 +97,13 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
             // the same bounded run. Unsupported opcodes also vector today, but
             // remain a diagnostic stop rather than being mistaken for a valid
             // exception path.
+            const std::uint64_t active_exception_vector =
+                (cpu_.cop0_status() & Cpu::StatusBev) != 0U
+                    ? Cpu::BootstrapGeneralExceptionVector
+                    : Cpu::GeneralExceptionVector;
             const bool entered_exception_handler =
-                instruction_pc != Cpu::GeneralExceptionVector &&
-                cpu_.pc() == Cpu::GeneralExceptionVector &&
+                instruction_pc != active_exception_vector &&
+                cpu_.pc() == active_exception_vector &&
                 error.rfind("Unsupported instruction", 0) != 0;
             if (entered_exception_handler) {
                 continue;
@@ -103,9 +112,13 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
             result.instructions_executed = i;
             result.final_pc = cpu_.pc();
             result.message = error.empty() ? "EE instruction execution stopped." : error;
+            const std::uint64_t active_exception_vector =
+                (cpu_.cop0_status() & Cpu::StatusBev) != 0U
+                    ? Cpu::BootstrapGeneralExceptionVector
+                    : Cpu::GeneralExceptionVector;
             result.reason = !fetched
                 ? StopReason::InvalidInstructionFetch
-                : ((cpu_.pc() == Cpu::GeneralExceptionVector)
+                : ((cpu_.pc() == active_exception_vector)
                     ? StopReason::CpuExceptionOrUnsupportedInstruction
                     : StopReason::ExecutionError);
             return result;
