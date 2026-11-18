@@ -35,6 +35,33 @@ int main() {
     check(memory.write(0xBF801010U, 4, 0x12345678U, &error) &&
               memory.read(0x1F801010U, 4, value, &error) && value == 0x12345678U,
           "IOP memory-latency register writes persist across virtual aliases");
+    check(memory.read(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, value, &error) && value == 0,
+          "EE MCH_RICM read returns the documented zero value");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00210000U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x1FU,
+          "EE RDRAM device-ID command returns the first device signature");
+    check(memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x1FU,
+          "EE RDRAM device-ID command returns the second device signature");
+    check(memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0,
+          "EE RDRAM device-ID command returns zero after two devices");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00230000U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x0D0DU,
+          "EE RDRAM configuration command returns the documented 0x0D0D value");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00240000U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x0090U,
+          "EE RDRAM configuration command returns the documented 0x0090 value");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00400015U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x15U,
+          "EE RDRAM command 0x40 returns the low five command bits");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, 0x80U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x15U,
+          "EE MCH_DRD write latches without changing the active RDRAM command response");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, 0U, &error) &&
+              memory.write(0xB000F430U, 4, 0x00210040U, &error) &&
+              memory.write(0xB000F430U, 4, 0x00210000U, &error) &&
+              memory.read(0xB000F440U, 4, value, &error) && value == 0x1FU,
+          "EE RDRAM command registers are accessible through KSEG1 aliases");
+
     check(memory.read(0x1F801060U, 4, value, &error) && value == 0x00000B88U,
           "IOP RAM_SIZE exposes its KUSEG low-half hardware value");
     check(memory.read(0xBF801060U, 4, value, &error) && value == 0x03E00B88U,

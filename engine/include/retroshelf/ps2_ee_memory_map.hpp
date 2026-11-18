@@ -28,6 +28,8 @@ public:
     static constexpr std::uint32_t IopRamBase = 0x1C000000U;
     static constexpr std::size_t IopRamSize = 2U * 1024U * 1024U;
     static constexpr std::uint32_t EeSifRegisterBase = 0x1000F200U;
+    static constexpr std::uint32_t EeMchRicmAddress = 0x1000F430U;
+    static constexpr std::uint32_t EeMchDrdAddress = 0x1000F440U;
     static constexpr std::uint32_t IopSifRegisterBase = 0x1D000000U;
     static constexpr std::size_t SifRegisterSize = 0x44U;
     static constexpr std::uint32_t IopMemoryControlBase = 0x1F801000U;
@@ -102,6 +104,10 @@ private:
     std::array<std::uint32_t, 2> iop_dma_control_{};
     std::array<std::uint32_t, 4> iop_dma_control2_{};
     std::array<std::uint8_t, SifRegisterSize> sif_registers_{};
+    // EE RDRAM initialization command/data latches (MCH_RICM/MCH_DRD).
+    std::uint32_t ee_mch_ricm_{};
+    std::uint32_t ee_mch_drd_{};
+    mutable std::uint8_t ee_rdram_sdevid_{};
     std::array<std::uint8_t, IopLegacySpuRegisterSize> iop_legacy_spu_registers_{};
     std::array<std::uint8_t, IopSpuRegisterSize> iop_spu_registers_{};
     std::array<std::uint8_t, IopSio2Size> iop_sio2_registers_{};

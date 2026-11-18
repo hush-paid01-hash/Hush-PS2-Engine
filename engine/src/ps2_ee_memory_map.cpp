@@ -150,6 +150,32 @@ bool Ps2EeMemoryMap::read(std::uint32_t address, std::size_t width,
     }
     const std::uint32_t physical = address >= Kseg0Base && address < 0xC0000000U
         ? address & SegmentMask : address;
+    if (physical == EeMchRicmAddress && width == 4U) {
+        value = 0;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == EeMchDrdAddress && width == 4U) {
+        const std::uint32_t sop = (ee_mch_ricm_ >> 6U) & 0xFU;
+        const std::uint32_t sa = (ee_mch_ricm_ >> 16U) & 0xFFFU;
+        value = 0;
+        if (sop == 0U) {
+            switch (sa) {
+            case 0x21U:
+                if (ee_rdram_sdevid_ < 2U) {
+                    ++ee_rdram_sdevid_;
+                    value = 0x1FU;
+                }
+                break;
+            case 0x23U: value = 0x0D0DU; break;
+            case 0x24U: value = 0x0090U; break;
+            case 0x40U: value = ee_mch_ricm_ & 0x1FU; break;
+            default: break;
+            }
+        }
+        if (error) error->clear();
+        return true;
+    }
     if (physical >= IopRamBase &&
         static_cast<std::uint64_t>(physical - IopRamBase) + width <= IopRamSize) {
         const std::size_t iop_offset = physical - IopRamBase;
@@ -290,6 +316,20 @@ bool Ps2EeMemoryMap::write(std::uint32_t address, std::size_t width,
         return value >= Kseg0Base && value < 0xC0000000U ? value & SegmentMask : value;
     };
     const std::uint32_t physical = canonical(address);
+    if (physical == EeMchRicmAddress && width == 4U) {
+        const std::uint32_t sa = (static_cast<std::uint32_t>(value) >> 16U) & 0xFFFU;
+        const std::uint32_t sbc = (static_cast<std::uint32_t>(value) >> 6U) & 0xFU;
+        if (sa == 0x21U && sbc == 1U && ((ee_mch_drd_ >> 7U) & 1U) == 0U)
+            ee_rdram_sdevid_ = 0;
+        ee_mch_ricm_ = static_cast<std::uint32_t>(value) & 0x7FFFFFFFU;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == EeMchDrdAddress && width == 4U) {
+        ee_mch_drd_ = static_cast<std::uint32_t>(value);
+        if (error) error->clear();
+        return true;
+    }
     if (physical >= BiosRomBase && physical < BiosRomBase + BiosRomWindowSize) {
         if (error) *error = bios_rom_.empty() ? "No BIOS image is mapped" : "BIOS write exceeds the loaded ROM image";
         return false;
