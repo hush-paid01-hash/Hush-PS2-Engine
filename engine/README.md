@@ -55,15 +55,15 @@ This is **not yet a complete PlayStation 2 emulator** and cannot boot or play ga
 
 `SystemBus` can use either the legacy bounded EE-RAM vector or `Ps2EeMemoryMap`.
 In map-backed mode, GIF DMA reads and writes use the memory map's supported main-RAM
-aliases (including KSEG0/KSEG1); BIOS ROM, scratchpad, MMIO, TLB translation, and device
-side effects are not thereby implemented. GIF DMA reads both chain tags and payloads
+aliases (including KSEG0/KSEG1). The map also exposes the BIOS ROM, scratchpad, the 2 MiB EE-visible IOP RAM window,
+EE cache control, shared EE/IOP SIF communication/flag/control latches, and initial IOP memory-control/RAM_SIZE, DMA-control, POST, SPU2
+(at `0x1F900000`), the legacy SPU compatibility window (`0x1F801C00`), and SIO2 register windows. These are partial boot-facing register models; general MMIO, TLB
+translation, and complete device side effects are not implemented. GIF DMA reads both chain tags and payloads
 through that bus interface and submits payloads to `GsPacketProcessor`, which
 parses GIF-tag framing and preserves complete packet bytes in a drainable queue bounded
 to 64 MiB. It feeds the current partial GS pipeline; this is not complete GS hardware emulation. The software renderer supports only a limited set of primitive paths and is not yet driven by a complete running game. Incomplete streams are reported by `finish_stream()`.
 
-DMA completion, tag, and error events are available through its interrupt callback. The current C ABI also exposes a synthetic graphics preview rendered through the partial GIF-to-GS pipeline; it is explicitly a test pattern, not a game frame. There
-is no EE interrupt controller or architectural status/mask/acknowledgment register model
-yet. GIF path arbitration, full GS behavior, and scratchpad transfers are unsupported.
+DMA completion, tag, and error events are available through its interrupt callback. The current C ABI also exposes a synthetic graphics preview rendered through the partial GIF-to-GS pipeline; it is explicitly a test pattern, not a game frame. An EE INTC status/mask model and four timer register blocks exist, but accurate interrupt timing, external H/V-blank sources, GIF path arbitration, full GS behavior, and scratchpad DMA transfers remain unsupported.
 CHCR.DIR must be clear for the supported EE-RAM-to-GIF direction; GIF-to-RAM transfers
 are unsupported.
 It models main-RAM chain tags and the two-entry CALL/RET stack, but not scratchpad
@@ -77,6 +77,4 @@ Use only BIOS and game images you are legally entitled to use. The portable engi
 
 The test CPU now supports J, JAL, JR, JALR, BEQ, BNE, BLEZ, BGTZ, BLTZ, BGEZ, BLTZAL and BGEZAL with one-instruction
 delay slots (no "likely" branches, no branch-in-delay-slot, no fetch-time address errors for unaligned jump targets).
-A minimal COP0 subset (Status.EXL, Cause.ExcCode/BD, EPC) records address-error and reserved-instruction exceptions;
-exceptions in a delay slot set Cause.BD and EPC to the branch address. The vector is fixed at 0x80000180. This is not a
-full Emotion Engine and cannot boot a BIOS.
+A partial COP0 model records Status.EXL/BEV, Cause.ExcCode/BD, EPC, and BadVAddr, and selects the normal `0x80000180` or bootstrap `0xBFC00380` general exception vector. Exceptions in a delay slot set Cause.BD and EPC to the branch address. Canonical sign-extended KSEG instruction fetch is supported. This is not a full Emotion Engine and cannot yet complete a real BIOS boot.

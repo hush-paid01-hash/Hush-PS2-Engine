@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -7,9 +8,9 @@
 
 namespace retroshelf {
 
-// Bounded EE memory foundation with main RAM aliases, the BIOS ROM window,
-// and the 16 KiB EE scratchpad. MMIO, TLB behavior, and hardware side effects
-// remain outside this memory-only model.
+// Bounded EE memory foundation with main RAM aliases, BIOS ROM, scratchpad,
+// and the IOP memory-control register window. Other MMIO and TLB behavior
+// remain outside this memory-map model.
 class Ps2EeMemoryMap {
 public:
     static constexpr std::size_t MainRamSize = 32U * 1024U * 1024U;
@@ -24,6 +25,29 @@ public:
     static constexpr std::size_t BiosRomWindowSize = 4U * 1024U * 1024U;
     static constexpr std::uint32_t ScratchpadBase = 0x70000000U;
     static constexpr std::size_t ScratchpadSize = 16U * 1024U;
+    static constexpr std::uint32_t IopRamBase = 0x1C000000U;
+    static constexpr std::size_t IopRamSize = 2U * 1024U * 1024U;
+    static constexpr std::uint32_t EeSifRegisterBase = 0x1000F200U;
+    static constexpr std::uint32_t EeMchRicmAddress = 0x1000F430U;
+    static constexpr std::uint32_t EeMchDrdAddress = 0x1000F440U;
+    static constexpr std::uint32_t IopSifRegisterBase = 0x1D000000U;
+    static constexpr std::size_t SifRegisterSize = 0x44U;
+    static constexpr std::uint32_t IopMemoryControlBase = 0x1F801000U;
+    static constexpr std::size_t IopMemoryControlSize = 9U * sizeof(std::uint32_t);
+    static constexpr std::uint32_t IopPost2Address = 0x1F802070U;
+    static constexpr std::uint32_t IopPost3Address = 0x1FA00000U;
+    static constexpr std::uint32_t IopDmaControlBase = 0x1F8010F0U;
+    static constexpr std::size_t IopDmaControlSize = 2U * sizeof(std::uint32_t);
+    static constexpr std::uint32_t IopDmaControl2Base = 0x1F801570U;
+    static constexpr std::size_t IopDmaControl2Size = 4U * sizeof(std::uint32_t);
+    static constexpr std::uint32_t IopLegacySpuRegisterBase = 0x1F801C00U;
+    static constexpr std::size_t IopLegacySpuRegisterSize = 0x200U;
+    static constexpr std::uint32_t IopSpuRegisterBase = 0x1F900000U;
+    static constexpr std::size_t IopSpuRegisterSize = 0x800U;
+    static constexpr std::uint32_t IopSio2Base = 0x1F808200U;
+    static constexpr std::size_t IopSio2Size = 0x78U;
+    static constexpr std::uint32_t EeCacheControlAddress = 0xFFFE0130U;
+    static constexpr std::uint32_t IopRamSizeAddress = 0x1F801060U;
 
     Ps2EeMemoryMap();
     explicit Ps2EeMemoryMap(std::size_t main_ram_size);
@@ -38,6 +62,10 @@ public:
                          std::string* error = nullptr);
     std::size_t bios_rom_size() const;
     std::size_t scratchpad_size() const;
+    std::uint32_t iop_post2_last_value() const;
+    std::size_t iop_post2_write_count() const;
+    std::uint32_t iop_post3_last_value() const;
+    std::size_t iop_post3_write_count() const;
 
     // Resolve a virtual EE address to a main-RAM offset. False means the
     // address is not in one of the supported RAM aliases.
@@ -61,8 +89,29 @@ private:
                             std::size_t& offset, std::string* error) const;
 
     std::vector<std::uint8_t> ram_;
+    std::vector<std::uint8_t> iop_ram_;
     std::vector<std::uint8_t> bios_rom_;
     std::vector<std::uint8_t> scratchpad_;
+    // IOP memory-control register reset values measured on PS2 hardware.
+    std::array<std::uint32_t, 9> iop_memory_control_{{
+        0x1F000000U, 0x1F802000U, 0x0013243FU, 0x00003022U,
+        0x0013243FU, 0x200931E1U, 0x00020843U, 0x00070777U, 0x00031125U
+    }};
+    std::uint32_t iop_post2_last_value_{0};
+    std::size_t iop_post2_write_count_{0};
+    std::uint32_t iop_post3_last_value_{0};
+    std::size_t iop_post3_write_count_{0};
+    std::array<std::uint32_t, 2> iop_dma_control_{};
+    std::array<std::uint32_t, 4> iop_dma_control2_{};
+    std::array<std::uint8_t, SifRegisterSize> sif_registers_{};
+    // EE RDRAM initialization command/data latches (MCH_RICM/MCH_DRD).
+    std::uint32_t ee_mch_ricm_{};
+    std::uint32_t ee_mch_drd_{};
+    mutable std::uint8_t ee_rdram_sdevid_{};
+    std::array<std::uint8_t, IopLegacySpuRegisterSize> iop_legacy_spu_registers_{};
+    std::array<std::uint8_t, IopSpuRegisterSize> iop_spu_registers_{};
+    std::array<std::uint8_t, IopSio2Size> iop_sio2_registers_{};
+    std::uint32_t ee_cache_control_{0x0001E988U};
 };
 
 } // namespace retroshelf

@@ -26,6 +26,107 @@ int main() {
     check(memory.read(0xA0000100, 4, value, &error) && value == 0x12345678,
           "KSEG1 uncached alias resolves to RAM");
 
+    check(memory.read(0x1F801000U, 4, value, &error) && value == 0x1F000000U,
+          "IOP expansion-1 memory-control register exposes its fixed base mapping");
+    check(memory.read(0xBF801004U, 4, value, &error) && value == 0x1F802000U,
+          "IOP expansion-2 memory-control register is readable through KSEG1");
+    check(memory.read(0xBF801010U, 4, value, &error) && value == 0x0013243FU,
+          "IOP BIOS timing register exposes its measured power-on value");
+    check(memory.write(0xBF801010U, 4, 0x12345678U, &error) &&
+              memory.read(0x1F801010U, 4, value, &error) && value == 0x12345678U,
+          "IOP memory-latency register writes persist across virtual aliases");
+    check(memory.read(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, value, &error) && value == 0,
+          "EE MCH_RICM read returns the documented zero value");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00210000U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x1FU,
+          "EE RDRAM device-ID command returns the first device signature");
+    check(memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x1FU,
+          "EE RDRAM device-ID command returns the second device signature");
+    check(memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0,
+          "EE RDRAM device-ID command returns zero after two devices");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00230000U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x0D0DU,
+          "EE RDRAM configuration command returns the documented 0x0D0D value");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00240000U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x0090U,
+          "EE RDRAM configuration command returns the documented 0x0090 value");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchRicmAddress, 4, 0x00400015U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x15U,
+          "EE RDRAM command 0x40 returns the low five command bits");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, 0x80U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, value, &error) && value == 0x15U,
+          "EE MCH_DRD write latches without changing the active RDRAM command response");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMchDrdAddress, 4, 0U, &error) &&
+              memory.write(0xB000F430U, 4, 0x00210040U, &error) &&
+              memory.write(0xB000F430U, 4, 0x00210000U, &error) &&
+              memory.read(0xB000F440U, 4, value, &error) && value == 0x1FU,
+          "EE RDRAM command registers are accessible through KSEG1 aliases");
+
+    check(memory.read(0x1F801060U, 4, value, &error) && value == 0x00000B88U,
+          "IOP RAM_SIZE exposes its KUSEG low-half hardware value");
+    check(memory.read(0xBF801060U, 4, value, &error) && value == 0x03E00B88U,
+          "IOP RAM_SIZE exposes its KSEG bus-latched hardware value");
+    check(memory.write(0xBF801060U, 4, 0U, &error) &&
+              memory.read(0xBF801060U, 4, value, &error) && value == 0x03E00B88U,
+          "IOP RAM_SIZE ignores writes");
+    check(memory.write(0xBF802070U, 4, 0xFEU, &error) &&
+              memory.iop_post2_last_value() == 0xFEU && memory.iop_post2_write_count() == 1U,
+          "IOP POST2 diagnostic port accepts BIOS boot-status writes through KSEG1");
+    check(!memory.read(0x1F802070U, 4, value, &error) &&
+              error.find("write-only") != std::string::npos,
+          "IOP POST2 diagnostic port is write-only");
+    check(memory.write(0x1FA00000U, 1, 0x7EU, &error) &&
+              memory.iop_post3_last_value() == 0x7EU && memory.iop_post3_write_count() == 1U,
+          "IOP POST3 accepts BIOS boot-status byte writes");
+    check(!memory.read(0x1FA00000U, 1, value, &error) &&
+              error.find("write-only") != std::string::npos,
+          "IOP POST3 diagnostic port is write-only");
+    check(memory.write(0xBF8010F0U, 4, 0x07777777U, &error) &&
+              memory.read(0x1F8010F0U, 4, value, &error) && value == 0x07777777U,
+          "IOP DPCR priority-control register supports BIOS writes through KSEG1");
+    check(memory.write(0x1F801574U, 4, 0x80000000U, &error) &&
+              memory.read(0xBF801574U, 4, value, &error) && value == 0x80000000U,
+          "IOP DICR2 interrupt-control register is accessible through both aliases");
+    check(memory.write(0xBF808268U, 4, 0x00000001U, &error) &&
+              memory.read(0x1F808268U, 4, value, &error) && value == 0x00000001U,
+          "IOP SIO2 control register supports BIOS initialization through KSEG1");
+    check(memory.write(0xBF801D86U, 2, 0x5A3CU, &error) &&
+              memory.read(0x1F801D86U, 2, value, &error) && value == 0x5A3CU,
+          "IOP legacy SPU compatibility window supports BIOS halfword writes through KSEG1");
+    check(memory.write(0xBF900186U, 2, 0xA53CU, &error) &&
+              memory.read(0x1F900186U, 2, value, &error) && value == 0xA53CU,
+          "IOP SPU2 register bank is independently mapped at 0x1F900000");
+    check(memory.write(0x1000F200U, 4, 0x12345678U, &error) &&
+              memory.read(0x1D000000U, 4, value, &error) && value == 0x12345678U,
+          "EE-to-IOP SIF communication register is shared across EE and IOP windows");
+    check(memory.write(0x9D000010U, 4, 0x87654321U, &error) &&
+              memory.read(0x1000F210U, 4, value, &error) && value == 0x87654321U,
+          "IOP-to-EE SIF communication register is shared across KSEG0 aliases");
+    check(memory.write(0x1000F220U, 4, 0x00000005U, &error) &&
+              memory.read(0x1D000020U, 4, value, &error) && value == 0x00000005U,
+          "SIF EE-to-IOP flag register is visible from the IOP window");
+    check(memory.write(0x1D000040U, 4, 0x00080000U, &error) &&
+              memory.read(0x1000F240U, 4, value, &error) && value == 0x00080000U,
+          "SIF control register is shared across EE and IOP windows");
+    check(memory.write(0x1C000100U, 4, 0x1234ABCDU, &error) &&
+              memory.read(0x9C000100U, 4, value, &error) && value == 0x1234ABCDU,
+          "EE IOP RAM window is shared across physical and KSEG0 aliases");
+    check(memory.write(0xBC000104U, 4, 0xA55A6996U, &error) &&
+              memory.read(0x1C000104U, 4, value, &error) && value == 0xA55A6996U,
+          "EE IOP RAM window is shared across KSEG1 and physical aliases");
+    check(memory.write128(0x1C000110U, 0x0123456789ABCDEFULL,
+                          0xFEDCBA9876543210ULL, &error) &&
+              memory.read128(0x9C000110U, low, high, &error) &&
+              low == 0x0123456789ABCDEFULL && high == 0xFEDCBA9876543210ULL,
+          "EE IOP RAM supports aligned 128-bit accesses through aliases");
+    check(!memory.read(0x1C200000U, 4, value, &error) && !error.empty(),
+          "EE IOP RAM rejects accesses immediately beyond its 2 MiB window");
+    check(memory.read(0xFFFE0130U, 4, value, &error) && value == 0x0001E988U,
+          "EE cache-control register exposes its modeled reset value");
+    check(memory.write(0xFFFE0130U, 4, 0x12345678U, &error) &&
+              memory.read(0xFFFE0130U, 4, value, &error) && value == 0x12345678U,
+          "EE cache-control register accepts word writes");
+
     // The accelerated uncached window maps physical RAM starting at offset 1 MiB.
     retroshelf::Ps2EeMemoryMap full_ram;
     check(full_ram.write(0x00100000U, 4, 0xCAFEBABEU, &error),

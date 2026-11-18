@@ -4,6 +4,19 @@
 #include "retroshelf/ee_timer.hpp"
 
 namespace retroshelf {
+namespace {
+bool canonicalize_instruction_address(std::uint64_t address, std::uint32_t& normalized) {
+    if (address <= 0xFFFFFFFFULL) {
+        normalized = static_cast<std::uint32_t>(address);
+        return true;
+    }
+    const std::uint32_t low = static_cast<std::uint32_t>(address);
+    if ((address >> 32U) != 0xFFFFFFFFULL || (low & 0x80000000U) == 0U)
+        return false;
+    normalized = low;
+    return true;
+}
+} // namespace
 
 EeExecutionRunner::EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory)
     : cpu_(cpu), memory_(memory) {}
@@ -41,9 +54,10 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
         const std::uint64_t instruction_pc = cpu_.pc();
         const bool delay_slot = cpu_.in_delay_slot();
         std::uint64_t raw_instruction = 0;
+        std::uint32_t fetch_address = 0;
         std::string fetch_error;
-        const bool fetched = instruction_pc <= 0xFFFFFFFFULL &&
-            memory_.read(static_cast<std::uint32_t>(instruction_pc), 4, raw_instruction, &fetch_error);
+        const bool fetched = canonicalize_instruction_address(instruction_pc, fetch_address) &&
+            memory_.read(fetch_address, 4, raw_instruction, &fetch_error);
 
         std::string error;
         cpu_.set_ee_interrupt_pending(intc_ != nullptr && intc_->active_pending() != 0U);
