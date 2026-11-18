@@ -62,13 +62,20 @@ int main() {
     assert(mapped_cpu.step_from_ee_memory(ee, &error));
     assert(mapped_cpu.reg(9) == 7);
 
-    // Reject addresses that would otherwise be truncated to a valid 32-bit
-    // EE address by the current memory-map interface.
+    // Canonical sign-extended KSEG addresses are valid 64-bit EE register
+    // values and must fetch from their corresponding 32-bit virtual address.
+    retroshelf::Cpu sign_extended_pc_cpu;
+    sign_extended_pc_cpu.set_pc(0xFFFFFFFF80001000ULL);
+    assert(sign_extended_pc_cpu.step_from_ee_memory(ee, &error));
+    assert(sign_extended_pc_cpu.reg(8) == 7U);
+    assert(sign_extended_pc_cpu.pc() == 0xFFFFFFFF80001004ULL);
+
+    // Reject unrelated high addresses rather than truncating them into valid RAM.
     retroshelf::Cpu high_pc_cpu;
-    high_pc_cpu.set_pc(0x180001000ULL);
+    high_pc_cpu.set_pc(0x0000000180001000ULL);
     assert(!high_pc_cpu.step_from_ee_memory(ee, &error));
-    assert(error.find("32-bit EE address space") != std::string::npos);
-    assert(high_pc_cpu.cop0_bad_vaddr() == 0x180001000ULL);
+    assert(error.find("canonical 32-bit EE address space") != std::string::npos);
+    assert(high_pc_cpu.cop0_bad_vaddr() == 0x0000000180001000ULL);
 
     retroshelf::Cpu high_data_cpu;
     high_data_cpu.set_pc(0x80001000U);

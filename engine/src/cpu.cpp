@@ -1455,16 +1455,17 @@ bool Cpu::step_from_ee_memory(Ps2EeMemoryMap& memory, std::string* error) {
         raise_exception(ExcAddressErrorLoad, pc_, delay_slot_pending_);
         return false;
     }
-    // The EE map translates 32-bit virtual addresses. Reject high bits rather
-    // than silently fetching from the address produced by truncation.
-    if (pc_ > 0xFFFFFFFFULL) {
-        if (error) *error = "Instruction fetch exceeds 32-bit EE address space";
+    // Accept canonical sign-extended 32-bit KSEG addresses produced by
+    // EE LUI/ADDIU sequences, but reject unrelated wider guest addresses.
+    std::uint32_t normalized_pc = 0;
+    if (!normalize_ee_address(pc_, normalized_pc)) {
+        if (error) *error = "Instruction fetch exceeds canonical 32-bit EE address space";
         bad_vaddr_ = pc_;
         raise_exception(ExcAddressErrorLoad, pc_, delay_slot_pending_);
         return false;
     }
     std::uint64_t fetched = 0;
-    if (!memory.read(static_cast<std::uint32_t>(pc_), 4, fetched, error)) {
+    if (!memory.read(normalized_pc, 4, fetched, error)) {
         bad_vaddr_ = pc_;
         if (error && error->empty()) *error = "Instruction fetch is outside mapped EE RAM";
         // An instruction-fetch bus/address fault must enter the EE exception
@@ -1488,14 +1489,15 @@ bool Cpu::step_from_ee_bus(Ps2EeMemoryMap& memory, SystemBus& bus,
         raise_exception(ExcAddressErrorLoad, pc_, delay_slot_pending_);
         return false;
     }
-    if (pc_ > 0xFFFFFFFFULL) {
-        if (error) *error = "Instruction fetch exceeds 32-bit EE address space";
+    std::uint32_t normalized_pc = 0;
+    if (!normalize_ee_address(pc_, normalized_pc)) {
+        if (error) *error = "Instruction fetch exceeds canonical 32-bit EE address space";
         bad_vaddr_ = pc_;
         raise_exception(ExcAddressErrorLoad, pc_, delay_slot_pending_);
         return false;
     }
     std::uint64_t fetched = 0;
-    if (!memory.read(static_cast<std::uint32_t>(pc_), 4, fetched, error)) {
+    if (!memory.read(normalized_pc, 4, fetched, error)) {
         bad_vaddr_ = pc_;
         if (error && error->empty()) *error = "Instruction fetch is outside mapped EE memory";
         raise_exception(ExcAddressErrorLoad, pc_, delay_slot_pending_);

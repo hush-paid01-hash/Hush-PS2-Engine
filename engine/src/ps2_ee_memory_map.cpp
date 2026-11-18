@@ -36,6 +36,10 @@ bool Ps2EeMemoryMap::load_bios_image(const std::vector<std::uint8_t>& image,
 
 std::size_t Ps2EeMemoryMap::bios_rom_size() const { return bios_rom_.size(); }
 std::size_t Ps2EeMemoryMap::scratchpad_size() const { return scratchpad_.size(); }
+std::uint32_t Ps2EeMemoryMap::iop_post2_last_value() const { return iop_post2_last_value_; }
+std::size_t Ps2EeMemoryMap::iop_post2_write_count() const { return iop_post2_write_count_; }
+std::uint32_t Ps2EeMemoryMap::iop_post3_last_value() const { return iop_post3_last_value_; }
+std::size_t Ps2EeMemoryMap::iop_post3_write_count() const { return iop_post3_write_count_; }
 
 bool Ps2EeMemoryMap::resolve_scratchpad(std::uint32_t address, std::size_t width,
                                         std::size_t& offset, std::string* error) const {
@@ -143,6 +147,78 @@ bool Ps2EeMemoryMap::read(std::uint32_t address, std::size_t width,
         if (error) error->clear();
         return true;
     }
+    const std::uint32_t physical = address >= Kseg0Base && address < 0xC0000000U
+        ? address & SegmentMask : address;
+    if (address == EeCacheControlAddress) {
+        value = ee_cache_control_;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == IopRamSizeAddress) {
+        // The high half is bus-latched differently through KUSEG vs KSEG0/1.
+        value = address >= Kseg0Base && address < 0xC0000000U
+            ? 0x03E00B88U : 0x00000B88U;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == IopPost2Address || physical == IopPost3Address) {
+        if (error) *error = "IOP POST diagnostic ports are write-only";
+        return false;
+    }
+    if (physical >= IopSpuRegisterBase &&
+        static_cast<std::uint64_t>(physical - IopSpuRegisterBase) + width <= IopSpuRegisterSize) {
+        const std::size_t register_offset = physical - IopSpuRegisterBase;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i)
+            value |= static_cast<std::uint64_t>(iop_spu_registers_[register_offset + i]) << (8U * i);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopSio2Base &&
+        static_cast<std::uint64_t>(physical - IopSio2Base) + width <= IopSio2Size) {
+        const std::size_t register_offset = physical - IopSio2Base;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i)
+            value |= static_cast<std::uint64_t>(iop_sio2_registers_[register_offset + i]) << (8U * i);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopDmaControlBase &&
+        static_cast<std::uint64_t>(physical - IopDmaControlBase) + width <= IopDmaControlSize) {
+        const std::size_t register_offset = physical - IopDmaControlBase;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i) {
+            const std::size_t byte_offset = register_offset + i;
+            const std::uint32_t word = iop_dma_control_[byte_offset / 4U];
+            value |= static_cast<std::uint64_t>((word >> ((byte_offset % 4U) * 8U)) & 0xFFU) << (8U * i);
+        }
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopDmaControl2Base &&
+        static_cast<std::uint64_t>(physical - IopDmaControl2Base) + width <= IopDmaControl2Size) {
+        const std::size_t register_offset = physical - IopDmaControl2Base;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i) {
+            const std::size_t byte_offset = register_offset + i;
+            const std::uint32_t word = iop_dma_control2_[byte_offset / 4U];
+            value |= static_cast<std::uint64_t>((word >> ((byte_offset % 4U) * 8U)) & 0xFFU) << (8U * i);
+        }
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopMemoryControlBase &&
+        static_cast<std::uint64_t>(physical - IopMemoryControlBase) + width <= IopMemoryControlSize) {
+        const std::size_t register_offset = physical - IopMemoryControlBase;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i) {
+            const std::size_t byte_offset = register_offset + i;
+            const std::uint32_t word = iop_memory_control_[byte_offset / 4U];
+            value |= static_cast<std::uint64_t>((word >> ((byte_offset % 4U) * 8U)) & 0xFFU) << (8U * i);
+        }
+        if (error) error->clear();
+        return true;
+    }
     std::size_t ram_offset = 0;
     if (!resolve_main_ram(address, width, width, ram_offset, error)) return false;
     value = 0;
@@ -185,6 +261,88 @@ bool Ps2EeMemoryMap::write(std::uint32_t address, std::size_t width,
     if (physical >= BiosRomBase && physical < BiosRomBase + BiosRomWindowSize) {
         if (error) *error = bios_rom_.empty() ? "No BIOS image is mapped" : "BIOS write exceeds the loaded ROM image";
         return false;
+    }
+    if (address == EeCacheControlAddress) {
+        ee_cache_control_ = static_cast<std::uint32_t>(value);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == IopRamSizeAddress) {
+        // RAM_SIZE is read-only; writes do not alter the installed RAM size.
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == IopPost2Address && (width == 1U || width == 4U)) {
+        iop_post2_last_value_ = static_cast<std::uint32_t>(value);
+        ++iop_post2_write_count_;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == IopPost3Address && (width == 1U || width == 4U)) {
+        iop_post3_last_value_ = static_cast<std::uint32_t>(value);
+        ++iop_post3_write_count_;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopSpuRegisterBase &&
+        static_cast<std::uint64_t>(physical - IopSpuRegisterBase) + width <= IopSpuRegisterSize) {
+        const std::size_t register_offset = physical - IopSpuRegisterBase;
+        for (std::size_t i = 0; i < width; ++i)
+            iop_spu_registers_[register_offset + i] =
+                static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopSio2Base &&
+        static_cast<std::uint64_t>(physical - IopSio2Base) + width <= IopSio2Size) {
+        const std::size_t register_offset = physical - IopSio2Base;
+        for (std::size_t i = 0; i < width; ++i)
+            iop_sio2_registers_[register_offset + i] =
+                static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopDmaControlBase &&
+        static_cast<std::uint64_t>(physical - IopDmaControlBase) + width <= IopDmaControlSize) {
+        const std::size_t register_offset = physical - IopDmaControlBase;
+        for (std::size_t i = 0; i < width; ++i) {
+            const std::size_t byte_offset = register_offset + i;
+            const std::size_t word_index = byte_offset / 4U;
+            const unsigned shift = static_cast<unsigned>(byte_offset % 4U) * 8U;
+            const std::uint32_t mask = 0xFFU << shift;
+            iop_dma_control_[word_index] = (iop_dma_control_[word_index] & ~mask) |
+                (static_cast<std::uint32_t>((value >> (8U * i)) & 0xFFU) << shift);
+        }
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopDmaControl2Base &&
+        static_cast<std::uint64_t>(physical - IopDmaControl2Base) + width <= IopDmaControl2Size) {
+        const std::size_t register_offset = physical - IopDmaControl2Base;
+        for (std::size_t i = 0; i < width; ++i) {
+            const std::size_t byte_offset = register_offset + i;
+            const std::size_t word_index = byte_offset / 4U;
+            const unsigned shift = static_cast<unsigned>(byte_offset % 4U) * 8U;
+            const std::uint32_t mask = 0xFFU << shift;
+            iop_dma_control2_[word_index] = (iop_dma_control2_[word_index] & ~mask) |
+                (static_cast<std::uint32_t>((value >> (8U * i)) & 0xFFU) << shift);
+        }
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopMemoryControlBase &&
+        static_cast<std::uint64_t>(physical - IopMemoryControlBase) + width <= IopMemoryControlSize) {
+        const std::size_t register_offset = physical - IopMemoryControlBase;
+        for (std::size_t i = 0; i < width; ++i) {
+            const std::size_t byte_offset = register_offset + i;
+            const std::size_t word_index = byte_offset / 4U;
+            const unsigned shift = static_cast<unsigned>(byte_offset % 4U) * 8U;
+            const std::uint32_t mask = 0xFFU << shift;
+            iop_memory_control_[word_index] = (iop_memory_control_[word_index] & ~mask) |
+                (static_cast<std::uint32_t>((value >> (8U * i)) & 0xFFU) << shift);
+        }
+        if (error) error->clear();
+        return true;
     }
     std::size_t offset = 0;
     if (!resolve_main_ram(address, width, width, offset, error)) return false;
