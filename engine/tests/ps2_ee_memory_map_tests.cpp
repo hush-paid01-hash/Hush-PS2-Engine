@@ -65,7 +65,35 @@ int main() {
           "IOP SIO2 control register supports BIOS initialization through KSEG1");
     check(memory.write(0xBF801D86U, 2, 0x5A3CU, &error) &&
               memory.read(0x1F801D86U, 2, value, &error) && value == 0x5A3CU,
-          "IOP SPU2 register bank supports halfword BIOS writes through KSEG1");
+          "IOP legacy SPU compatibility window supports BIOS halfword writes through KSEG1");
+    check(memory.write(0xBF900186U, 2, 0xA53CU, &error) &&
+              memory.read(0x1F900186U, 2, value, &error) && value == 0xA53CU,
+          "IOP SPU2 register bank is independently mapped at 0x1F900000");
+    check(memory.write(0x1000F200U, 4, 0x12345678U, &error) &&
+              memory.read(0x1D000000U, 4, value, &error) && value == 0x12345678U,
+          "EE-to-IOP SIF communication register is shared across EE and IOP windows");
+    check(memory.write(0x9D000010U, 4, 0x87654321U, &error) &&
+              memory.read(0x1000F210U, 4, value, &error) && value == 0x87654321U,
+          "IOP-to-EE SIF communication register is shared across KSEG0 aliases");
+    check(memory.write(0x1000F220U, 4, 0x00000005U, &error) &&
+              memory.read(0x1D000020U, 4, value, &error) && value == 0x00000005U,
+          "SIF EE-to-IOP flag register is visible from the IOP window");
+    check(memory.write(0x1D000040U, 4, 0x00080000U, &error) &&
+              memory.read(0x1000F240U, 4, value, &error) && value == 0x00080000U,
+          "SIF control register is shared across EE and IOP windows");
+    check(memory.write(0x1C000100U, 4, 0x1234ABCDU, &error) &&
+              memory.read(0x9C000100U, 4, value, &error) && value == 0x1234ABCDU,
+          "EE IOP RAM window is shared across physical and KSEG0 aliases");
+    check(memory.write(0xBC000104U, 4, 0xA55A6996U, &error) &&
+              memory.read(0x1C000104U, 4, value, &error) && value == 0xA55A6996U,
+          "EE IOP RAM window is shared across KSEG1 and physical aliases");
+    check(memory.write128(0x1C000110U, 0x0123456789ABCDEFULL,
+                          0xFEDCBA9876543210ULL, &error) &&
+              memory.read128(0x9C000110U, low, high, &error) &&
+              low == 0x0123456789ABCDEFULL && high == 0xFEDCBA9876543210ULL,
+          "EE IOP RAM supports aligned 128-bit accesses through aliases");
+    check(!memory.read(0x1C200000U, 4, value, &error) && !error.empty(),
+          "EE IOP RAM rejects accesses immediately beyond its 2 MiB window");
     check(memory.read(0xFFFE0130U, 4, value, &error) && value == 0x0001E988U,
           "EE cache-control register exposes its modeled reset value");
     check(memory.write(0xFFFE0130U, 4, 0x12345678U, &error) &&

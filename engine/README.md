@@ -55,9 +55,9 @@ This is **not yet a complete PlayStation 2 emulator** and cannot boot or play ga
 
 `SystemBus` can use either the legacy bounded EE-RAM vector or `Ps2EeMemoryMap`.
 In map-backed mode, GIF DMA reads and writes use the memory map's supported main-RAM
-aliases (including KSEG0/KSEG1). The map also exposes the BIOS ROM, scratchpad, EE cache
-control, and initial IOP memory-control/RAM_SIZE, DMA-control, POST, SPU2, and SIO2
-register windows. These are partial boot-facing register models; general MMIO, TLB
+aliases (including KSEG0/KSEG1). The map also exposes the BIOS ROM, scratchpad, the 2 MiB EE-visible IOP RAM window,
+EE cache control, shared EE/IOP SIF communication/flag/control latches, and initial IOP memory-control/RAM_SIZE, DMA-control, POST, SPU2
+(at `0x1F900000`), the legacy SPU compatibility window (`0x1F801C00`), and SIO2 register windows. These are partial boot-facing register models; general MMIO, TLB
 translation, and complete device side effects are not implemented. GIF DMA reads both chain tags and payloads
 through that bus interface and submits payloads to `GsPacketProcessor`, which
 parses GIF-tag framing and preserves complete packet bytes in a drainable queue bounded

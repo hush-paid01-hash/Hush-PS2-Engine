@@ -25,6 +25,11 @@ public:
     static constexpr std::size_t BiosRomWindowSize = 4U * 1024U * 1024U;
     static constexpr std::uint32_t ScratchpadBase = 0x70000000U;
     static constexpr std::size_t ScratchpadSize = 16U * 1024U;
+    static constexpr std::uint32_t IopRamBase = 0x1C000000U;
+    static constexpr std::size_t IopRamSize = 2U * 1024U * 1024U;
+    static constexpr std::uint32_t EeSifRegisterBase = 0x1000F200U;
+    static constexpr std::uint32_t IopSifRegisterBase = 0x1D000000U;
+    static constexpr std::size_t SifRegisterSize = 0x44U;
     static constexpr std::uint32_t IopMemoryControlBase = 0x1F801000U;
     static constexpr std::size_t IopMemoryControlSize = 9U * sizeof(std::uint32_t);
     static constexpr std::uint32_t IopPost2Address = 0x1F802070U;
@@ -33,8 +38,10 @@ public:
     static constexpr std::size_t IopDmaControlSize = 2U * sizeof(std::uint32_t);
     static constexpr std::uint32_t IopDmaControl2Base = 0x1F801570U;
     static constexpr std::size_t IopDmaControl2Size = 4U * sizeof(std::uint32_t);
-    static constexpr std::uint32_t IopSpuRegisterBase = 0x1F801C00U;
-    static constexpr std::size_t IopSpuRegisterSize = 0x200U;
+    static constexpr std::uint32_t IopLegacySpuRegisterBase = 0x1F801C00U;
+    static constexpr std::size_t IopLegacySpuRegisterSize = 0x200U;
+    static constexpr std::uint32_t IopSpuRegisterBase = 0x1F900000U;
+    static constexpr std::size_t IopSpuRegisterSize = 0x800U;
     static constexpr std::uint32_t IopSio2Base = 0x1F808200U;
     static constexpr std::size_t IopSio2Size = 0x78U;
     static constexpr std::uint32_t EeCacheControlAddress = 0xFFFE0130U;
@@ -80,6 +87,7 @@ private:
                             std::size_t& offset, std::string* error) const;
 
     std::vector<std::uint8_t> ram_;
+    std::vector<std::uint8_t> iop_ram_;
     std::vector<std::uint8_t> bios_rom_;
     std::vector<std::uint8_t> scratchpad_;
     // IOP memory-control register reset values measured on PS2 hardware.
@@ -93,6 +101,8 @@ private:
     std::size_t iop_post3_write_count_{0};
     std::array<std::uint32_t, 2> iop_dma_control_{};
     std::array<std::uint32_t, 4> iop_dma_control2_{};
+    std::array<std::uint8_t, SifRegisterSize> sif_registers_{};
+    std::array<std::uint8_t, IopLegacySpuRegisterSize> iop_legacy_spu_registers_{};
     std::array<std::uint8_t, IopSpuRegisterSize> iop_spu_registers_{};
     std::array<std::uint8_t, IopSio2Size> iop_sio2_registers_{};
     std::uint32_t ee_cache_control_{0x0001E988U};

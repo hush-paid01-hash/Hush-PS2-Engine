@@ -12,9 +12,10 @@ bool is_bios_window_address(std::uint32_t address) {
 }
 } // namespace
 
-Ps2EeMemoryMap::Ps2EeMemoryMap() : ram_(MainRamSize, 0), scratchpad_(ScratchpadSize, 0) {}
+Ps2EeMemoryMap::Ps2EeMemoryMap()
+    : ram_(MainRamSize, 0), iop_ram_(IopRamSize, 0), scratchpad_(ScratchpadSize, 0) {}
 Ps2EeMemoryMap::Ps2EeMemoryMap(std::size_t main_ram_size)
-    : ram_(main_ram_size, 0), scratchpad_(ScratchpadSize, 0) {}
+    : ram_(main_ram_size, 0), iop_ram_(IopRamSize, 0), scratchpad_(ScratchpadSize, 0) {}
 std::size_t Ps2EeMemoryMap::main_ram_size() const { return ram_.size(); }
 std::vector<std::uint8_t>& Ps2EeMemoryMap::main_ram() { return ram_; }
 const std::vector<std::uint8_t>& Ps2EeMemoryMap::main_ram() const { return ram_; }
@@ -149,6 +150,28 @@ bool Ps2EeMemoryMap::read(std::uint32_t address, std::size_t width,
     }
     const std::uint32_t physical = address >= Kseg0Base && address < 0xC0000000U
         ? address & SegmentMask : address;
+    if (physical >= IopRamBase &&
+        static_cast<std::uint64_t>(physical - IopRamBase) + width <= IopRamSize) {
+        const std::size_t iop_offset = physical - IopRamBase;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i)
+            value |= static_cast<std::uint64_t>(iop_ram_[iop_offset + i]) << (8U * i);
+        if (error) error->clear();
+        return true;
+    }
+    const bool ee_sif_window = physical >= EeSifRegisterBase &&
+        static_cast<std::uint64_t>(physical - EeSifRegisterBase) + width <= SifRegisterSize;
+    const bool iop_sif_window = physical >= IopSifRegisterBase &&
+        static_cast<std::uint64_t>(physical - IopSifRegisterBase) + width <= SifRegisterSize;
+    if (ee_sif_window || iop_sif_window) {
+        const std::size_t sif_offset = static_cast<std::size_t>(
+            physical - (ee_sif_window ? EeSifRegisterBase : IopSifRegisterBase));
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i)
+            value |= static_cast<std::uint64_t>(sif_registers_[sif_offset + i]) << (8U * i);
+        if (error) error->clear();
+        return true;
+    }
     if (address == EeCacheControlAddress) {
         value = ee_cache_control_;
         if (error) error->clear();
@@ -164,6 +187,15 @@ bool Ps2EeMemoryMap::read(std::uint32_t address, std::size_t width,
     if (physical == IopPost2Address || physical == IopPost3Address) {
         if (error) *error = "IOP POST diagnostic ports are write-only";
         return false;
+    }
+    if (physical >= IopLegacySpuRegisterBase &&
+        static_cast<std::uint64_t>(physical - IopLegacySpuRegisterBase) + width <= IopLegacySpuRegisterSize) {
+        const std::size_t register_offset = physical - IopLegacySpuRegisterBase;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i)
+            value |= static_cast<std::uint64_t>(iop_legacy_spu_registers_[register_offset + i]) << (8U * i);
+        if (error) error->clear();
+        return true;
     }
     if (physical >= IopSpuRegisterBase &&
         static_cast<std::uint64_t>(physical - IopSpuRegisterBase) + width <= IopSpuRegisterSize) {
@@ -262,6 +294,28 @@ bool Ps2EeMemoryMap::write(std::uint32_t address, std::size_t width,
         if (error) *error = bios_rom_.empty() ? "No BIOS image is mapped" : "BIOS write exceeds the loaded ROM image";
         return false;
     }
+    if (physical >= IopRamBase &&
+        static_cast<std::uint64_t>(physical - IopRamBase) + width <= IopRamSize) {
+        const std::size_t iop_offset = physical - IopRamBase;
+        for (std::size_t i = 0; i < width; ++i)
+            iop_ram_[iop_offset + i] =
+                static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
+        if (error) error->clear();
+        return true;
+    }
+    const bool ee_sif_window = physical >= EeSifRegisterBase &&
+        static_cast<std::uint64_t>(physical - EeSifRegisterBase) + width <= SifRegisterSize;
+    const bool iop_sif_window = physical >= IopSifRegisterBase &&
+        static_cast<std::uint64_t>(physical - IopSifRegisterBase) + width <= SifRegisterSize;
+    if (ee_sif_window || iop_sif_window) {
+        const std::size_t sif_offset = static_cast<std::size_t>(
+            physical - (ee_sif_window ? EeSifRegisterBase : IopSifRegisterBase));
+        for (std::size_t i = 0; i < width; ++i)
+            sif_registers_[sif_offset + i] =
+                static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
+        if (error) error->clear();
+        return true;
+    }
     if (address == EeCacheControlAddress) {
         ee_cache_control_ = static_cast<std::uint32_t>(value);
         if (error) error->clear();
@@ -281,6 +335,15 @@ bool Ps2EeMemoryMap::write(std::uint32_t address, std::size_t width,
     if (physical == IopPost3Address && (width == 1U || width == 4U)) {
         iop_post3_last_value_ = static_cast<std::uint32_t>(value);
         ++iop_post3_write_count_;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= IopLegacySpuRegisterBase &&
+        static_cast<std::uint64_t>(physical - IopLegacySpuRegisterBase) + width <= IopLegacySpuRegisterSize) {
+        const std::size_t register_offset = physical - IopLegacySpuRegisterBase;
+        for (std::size_t i = 0; i < width; ++i)
+            iop_legacy_spu_registers_[register_offset + i] =
+                static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
         if (error) error->clear();
         return true;
     }
@@ -382,6 +445,20 @@ bool Ps2EeMemoryMap::read128(std::uint32_t address, std::uint64_t& low,
         if (error) error->clear();
         return true;
     }
+    const std::uint32_t physical = address >= Kseg0Base && address < 0xC0000000U
+        ? address & SegmentMask : address;
+    if (physical >= IopRamBase &&
+        static_cast<std::uint64_t>(physical - IopRamBase) + 16U <= IopRamSize) {
+        offset = physical - IopRamBase;
+        low = 0;
+        high = 0;
+        for (std::size_t i = 0; i < 8; ++i) {
+            low |= static_cast<std::uint64_t>(iop_ram_[offset + i]) << (8U * i);
+            high |= static_cast<std::uint64_t>(iop_ram_[offset + 8U + i]) << (8U * i);
+        }
+        if (error) error->clear();
+        return true;
+    }
     if (!resolve_main_ram(address, 16, 16, offset, error)) return false;
     low = 0;
     high = 0;
@@ -423,6 +500,16 @@ bool Ps2EeMemoryMap::write128(std::uint32_t address, std::uint64_t low,
     if (physical >= BiosRomBase && physical < BiosRomBase + BiosRomWindowSize) {
         if (error) *error = bios_rom_.empty() ? "No BIOS image is mapped" : "BIOS write exceeds the loaded ROM image";
         return false;
+    }
+    if (physical >= IopRamBase &&
+        static_cast<std::uint64_t>(physical - IopRamBase) + 16U <= IopRamSize) {
+        const std::size_t iop_offset = physical - IopRamBase;
+        for (std::size_t i = 0; i < 8; ++i) {
+            iop_ram_[iop_offset + i] = static_cast<std::uint8_t>((low >> (8U * i)) & 0xFFU);
+            iop_ram_[iop_offset + 8U + i] = static_cast<std::uint8_t>((high >> (8U * i)) & 0xFFU);
+        }
+        if (error) error->clear();
+        return true;
     }
     std::size_t offset = 0;
     if (!resolve_main_ram(address, 16, 16, offset, error)) return false;
