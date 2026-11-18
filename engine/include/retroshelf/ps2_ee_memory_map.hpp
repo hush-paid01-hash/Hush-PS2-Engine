@@ -30,6 +30,15 @@ public:
     static constexpr std::uint32_t EeSifRegisterBase = 0x1000F200U;
     static constexpr std::uint32_t EeMchRicmAddress = 0x1000F430U;
     static constexpr std::uint32_t EeMchDrdAddress = 0x1000F440U;
+    static constexpr std::uint32_t EeRdramControllerBase = 0x1000F400U;
+    static constexpr std::uint32_t EeRdramControllerStatusAddress = 0x1000F410U;
+    static constexpr std::size_t EeRdramControllerSize = 0x100U;
+    // Early BIOS writes this memory-controller control register during EE reset.
+    static constexpr std::uint32_t EeMemoryControllerControlAddress = 0x1000F500U;
+    static constexpr std::uint32_t EeDmacEnableStatusAddress = 0x1000F520U;
+    static constexpr std::uint32_t EeDmacEnableControlAddress = 0x1000F590U;
+    static constexpr std::uint32_t EeSioRegisterBase = 0x1000F100U;
+    static constexpr std::size_t EeSioRegisterSize = 0xC4U;
     static constexpr std::uint32_t IopSifRegisterBase = 0x1D000000U;
     static constexpr std::size_t SifRegisterSize = 0x44U;
     static constexpr std::uint32_t IopMemoryControlBase = 0x1F801000U;
@@ -48,6 +57,8 @@ public:
     static constexpr std::size_t IopSio2Size = 0x78U;
     static constexpr std::uint32_t EeCacheControlAddress = 0xFFFE0130U;
     static constexpr std::uint32_t IopRamSizeAddress = 0x1F801060U;
+    static constexpr std::uint32_t IopInterruptStatusAddress = 0x1F801070U;
+    static constexpr std::uint32_t IopInterruptMaskAddress = 0x1F801074U;
 
     Ps2EeMemoryMap();
     explicit Ps2EeMemoryMap(std::size_t main_ram_size);
@@ -66,6 +77,9 @@ public:
     std::size_t iop_post2_write_count() const;
     std::uint32_t iop_post3_last_value() const;
     std::size_t iop_post3_write_count() const;
+    void raise_iop_interrupt(std::uint16_t bits);
+    std::uint16_t iop_interrupt_status() const;
+    std::uint16_t iop_interrupt_mask() const;
 
     // Resolve a virtual EE address to a main-RAM offset. False means the
     // address is not in one of the supported RAM aliases.
@@ -103,10 +117,22 @@ private:
     std::size_t iop_post3_write_count_{0};
     std::array<std::uint32_t, 2> iop_dma_control_{};
     std::array<std::uint32_t, 4> iop_dma_control2_{};
+    // IOP interrupt controller: I_STAT is write-one-to-clear; I_MASK is R/W.
+    std::uint16_t iop_interrupt_status_{};
+    std::uint16_t iop_interrupt_mask_{};
     std::array<std::uint8_t, SifRegisterSize> sif_registers_{};
     // EE RDRAM initialization command/data latches (MCH_RICM/MCH_DRD).
     std::uint32_t ee_mch_ricm_{};
     std::uint32_t ee_mch_drd_{};
+    // Other RDRAM-controller registers are retained as raw MMIO latches until
+    // their device-specific behavior is implemented.
+    mutable std::array<std::uint8_t, EeRdramControllerSize> ee_rdram_controller_registers_{};
+    // Minimal latch for the BIOS-observed write at 0x1000F500; full
+    // memory-controller/DMA suspend semantics are not yet modelled.
+    std::uint32_t ee_memory_controller_control_{};
+    bool ee_dmac_disabled_{};
+    // EE UART/SIO register window; TX-empty status is present at reset.
+    std::array<std::uint8_t, EeSioRegisterSize> ee_sio_registers_{};
     mutable std::uint8_t ee_rdram_sdevid_{};
     std::array<std::uint8_t, IopLegacySpuRegisterSize> iop_legacy_spu_registers_{};
     std::array<std::uint8_t, IopSpuRegisterSize> iop_spu_registers_{};
