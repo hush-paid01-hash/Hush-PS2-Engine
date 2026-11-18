@@ -3,6 +3,12 @@
 #include "retroshelf/iso9660_disc.hpp"
 #include "retroshelf/ps2_disc_execution.hpp"
 #include "retroshelf/ps2_ee_memory_map.hpp"
+#include "retroshelf/system_bus.hpp"
+#include "retroshelf/ee_interrupt_controller.hpp"
+#include "retroshelf/ee_timer.hpp"
+#include "retroshelf/ee_gif_dmac.hpp"
+#include "retroshelf/ee_gif_gs_runtime.hpp"
+#include <memory>
 
 #include <algorithm>
 #include <cstdint>
@@ -72,9 +78,27 @@ int run_bios(const std::string& path, std::size_t budget) {
         return 2;
     }
     retroshelf::Cpu cpu;
-    retroshelf::EeExecutionRunner runner(cpu, memory);
+    retroshelf::SystemBus bus(memory);
+    auto intc = std::make_shared<retroshelf::EeInterruptController>();
+    auto timers = std::make_shared<retroshelf::EeTimerBlock>();
+    auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
+    auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
+    auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
+        *gif_runtime, *dmac_global);
+    if (!bus.map_mmio(retroshelf::EeInterruptController::RegisterBase,
+                      retroshelf::EeInterruptController::RegisterSize, intc, &error) ||
+        !bus.map_mmio(retroshelf::EeTimerBlock::RegisterBase,
+                      retroshelf::EeTimerBlock::RegisterSize, timers, &error) ||
+        !bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
+                      retroshelf::EeGifDmacChannel2::RegisterSize, gif_channel, &error) ||
+        !bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
+                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error)) {
+        std::cerr << "Cannot map EE diagnostic devices: " << error << "\n";
+        return 2;
+    }
+    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers);
     const auto result = runner.run_from_bios_reset_vector(budget);
-    std::cout << "BIOS reset-vector diagnostic (not a complete firmware boot)\n";
+    std::cout << "BIOS reset-vector diagnostic with partial EE devices (not a complete firmware boot)\n";
     print_trace(result);
     return result.instructions_executed > 0 ? 0 : 3;
 }
