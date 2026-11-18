@@ -208,14 +208,9 @@ bool Ps2EeMemoryMap::read(std::uint32_t address, std::size_t width,
         return true;
     }
     if (physical == EeRdramControllerStatusAddress && width == 4U) {
-        const std::size_t offset = physical - EeRdramControllerBase;
+        // F410 is undocumented. Existing PS2 hardware emulation models reads
+        // as zero; do not invent a one-read busy handshake for this register.
         value = 0;
-        for (std::size_t i = 0; i < 4U; ++i)
-            value |= static_cast<std::uint64_t>(ee_rdram_controller_registers_[offset + i]) << (8U * i);
-        // RESET polls bit 31 after issuing the F410 RDRAM command. Model one
-        // busy observation, then complete the command by clearing that bit.
-        if ((value & 0x80000000U) != 0U)
-            ee_rdram_controller_registers_[offset + 3U] &= 0x7FU;
         if (error) error->clear();
         return true;
     }

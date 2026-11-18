@@ -81,9 +81,9 @@ int main() {
               memory.read(0x1000F410U, 4, value, &error) && value == 0U,
           "undocumented EE RDRAM-controller register F410 accepts BIOS initialization writes");
     check(memory.write(0xB000F410U, 4, 0x80000000U, &error) &&
-              memory.read(0x1000F410U, 4, value, &error) && value == 0x80000000U &&
+              memory.read(0x1000F410U, 4, value, &error) && value == 0U &&
               memory.read(0x1000F410U, 4, value, &error) && value == 0U,
-          "EE RDRAM F410 busy bit clears after the BIOS observes command completion");
+          "undocumented EE RDRAM F410 reads as zero without a fabricated busy handshake");
     check(memory.read(0xB000F520U, 4, value, &error) && value == 0x1201U,
           "EE D_ENABLER exposes the documented BIOS startup status");
     check(memory.write(0xB000F590U, 4, 0x10000U, &error) &&
