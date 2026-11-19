@@ -35,12 +35,12 @@ int main() {
     auto* pvd = image.data() + 16 * sector;
     pvd[0]=1; pvd[1]='C'; pvd[2]='D'; pvd[3]='0'; pvd[4]='0'; pvd[5]='1'; pvd[6]=1;
     std::vector<std::uint8_t> descriptor(pvd,pvd+sector);
-    record(descriptor,156,20,sector,2,std::string(1,'\\0'));
+    record(descriptor,156,20,sector,2,std::string(1,'\0'));
     std::copy(descriptor.begin()+156,descriptor.begin()+190,image.begin()+16*sector+156);
 
     std::vector<std::uint8_t> directory(sector,0);
-    record(directory,0,20,sector,2,std::string(1,'\\0'));
-    record(directory,34,20,sector,2,std::string(1,'\\1'));
+    record(directory,0,20,sector,2,std::string(1,'\0'));
+    record(directory,34,20,sector,2,std::string(1,'\1'));
     record(directory,68,21,5,0,"HELLO.TXT;1");
     std::copy(directory.begin(),directory.end(),image.begin()+20*sector);
     const std::string payload="hello";
