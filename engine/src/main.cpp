@@ -38,18 +38,23 @@ void print_trace(const retroshelf::EeExecutionRunner::Result& result) {
     std::cout << "Instructions executed: " << result.instructions_executed << "\n"
               << "Final PC: 0x" << std::hex << result.final_pc << std::dec << "\n"
               << "Stop reason: " << stop_reason(result.reason) << "\n"
-              << "Detail: " << result.message << "\n"
-              << "Trace entries: " << result.trace.size() << "\n";
-    for (const auto& entry : result.trace) {
-        std::cout << "PC=0x" << std::hex << std::setw(8) << std::setfill('0') << entry.pc
-                  << " instruction=0x" << std::setw(8) << entry.instruction
-                  << std::dec << " fetched=" << (entry.fetched ? "yes" : "no")
-                  << " completed=" << (entry.instruction_completed ? "yes" : "no");
-        if (entry.exception_taken)
-            std::cout << " exception=" << entry.exception_code
-                      << " EPC=0x" << std::hex << entry.exception_epc << std::dec;
-        std::cout << "\n";
-    }
+              << "Detail: " << result.message << "\n";
+    const auto print_entries = [](const char* label,
+                                  const std::vector<retroshelf::EeExecutionRunner::TraceEntry>& entries) {
+        std::cout << label << " (" << entries.size() << "):\n";
+        for (const auto& entry : entries) {
+            std::cout << "PC=0x" << std::hex << std::setw(8) << std::setfill('0') << entry.pc
+                      << " instruction=0x" << std::setw(8) << entry.instruction
+                      << std::dec << " fetched=" << (entry.fetched ? "yes" : "no")
+                      << " completed=" << (entry.instruction_completed ? "yes" : "no");
+            if (entry.exception_taken)
+                std::cout << " exception=" << entry.exception_code
+                          << " EPC=0x" << std::hex << entry.exception_epc << std::dec;
+            std::cout << "\n";
+        }
+    };
+    print_entries("First trace entries", result.trace);
+    print_entries("Last trace entries", result.tail_trace);
 }
 
 bool parse_budget(const char* text, std::size_t& budget) {
