@@ -61,6 +61,34 @@ int main() {
               memory.write(0xB000F430U, 4, 0x00210000U, &error) &&
               memory.read(0xB000F440U, 4, value, &error) && value == 0x1FU,
           "EE RDRAM command registers are accessible through KSEG1 aliases");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::EeMemoryControllerControlAddress,
+                       4, 1U, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMemoryControllerControlAddress,
+                          4, value, &error) && value == 1U,
+          "EE BIOS memory-controller control register accepts and retains its reset write");
+    check(memory.write(0xB000F500U, 4, 0xFFFFFFFFU, &error) &&
+              memory.read(retroshelf::Ps2EeMemoryMap::EeMemoryControllerControlAddress,
+                          4, value, &error) && value == 0xFFFFFFFFU,
+          "EE memory-controller control register is accessible through KSEG1 alias");
+    check(memory.read(0x1000F110U, 4, value, &error) && value == 0x60U,
+          "EE SIO line status reports an idle transmitter");
+    check(memory.read(0x1000F130U, 4, value, &error) && value == 0x02U,
+          "EE SIO interrupt status reports an empty transmit FIFO");
+    check(memory.write(0xB000F100U, 4, 0x20U, &error) &&
+              memory.read(0x1000F100U, 4, value, &error) && value == 0x20U,
+          "EE SIO line-control register is accessible through KSEG1 alias");
+    check(memory.write(0xB000F410U, 4, 0U, &error) &&
+              memory.read(0x1000F410U, 4, value, &error) && value == 0U,
+          "undocumented EE RDRAM-controller register F410 accepts BIOS initialization writes");
+    check(memory.write(0xB000F410U, 4, 0x80000000U, &error) &&
+              memory.read(0x1000F410U, 4, value, &error) && value == 0U &&
+              memory.read(0x1000F410U, 4, value, &error) && value == 0U,
+          "undocumented EE RDRAM F410 reads as zero without a fabricated busy handshake");
+    check(memory.read(0xB000F520U, 4, value, &error) && value == 0x1201U,
+          "EE D_ENABLER exposes the documented BIOS startup status");
+    check(memory.write(0xB000F590U, 4, 0x10000U, &error) &&
+              memory.read(0x1000F520U, 4, value, &error) && value == 0x11201U,
+          "EE D_ENABLEW disables DMA and updates the D_ENABLER status bit");
 
     check(memory.read(0x1F801060U, 4, value, &error) && value == 0x00000B88U,
           "IOP RAM_SIZE exposes its KUSEG low-half hardware value");
@@ -69,6 +97,22 @@ int main() {
     check(memory.write(0xBF801060U, 4, 0U, &error) &&
               memory.read(0xBF801060U, 4, value, &error) && value == 0x03E00B88U,
           "IOP RAM_SIZE ignores writes");
+    memory.raise_iop_interrupt(0x0025U);
+    check(memory.read(retroshelf::Ps2EeMemoryMap::IopInterruptStatusAddress, 4, value, &error) && value == 0x0025U,
+          "IOP I_STAT reports raised interrupt bits through a word read");
+    check(memory.write(retroshelf::Ps2EeMemoryMap::IopInterruptStatusAddress, 2, 0x0004U, &error) &&
+              memory.iop_interrupt_status() == 0x0021U,
+          "IOP I_STAT clears only bits written as one");
+    check(memory.write(0xBF801070U, 4, 0U, &error) &&
+              memory.read(0x1F801070U, 2, value, &error) && value == 0x0021U,
+          "IOP BIOS zero-write to I_STAT is harmless through KSEG1");
+    check(memory.write(0xBF801074U, 4, 0x1234U, &error) &&
+              memory.read(0x1F801074U, 2, value, &error) && value == 0x1234U,
+          "IOP I_MASK is readable and writable through KSEG1 aliases");
+    check(memory.write(0x1F801075U, 1, 0xABU, &error) &&
+              memory.read(0xBF801075U, 1, value, &error) && value == 0xABU &&
+              memory.iop_interrupt_mask() == 0xAB34U,
+          "IOP I_MASK supports byte-lane access");
     check(memory.write(0xBF802070U, 4, 0xFEU, &error) &&
               memory.iop_post2_last_value() == 0xFEU && memory.iop_post2_write_count() == 1U,
           "IOP POST2 diagnostic port accepts BIOS boot-status writes through KSEG1");

@@ -44,6 +44,7 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
     Result result;
     result.final_pc = cpu_.pc();
     result.trace.reserve(instruction_budget < TraceCapacity ? instruction_budget : TraceCapacity);
+    result.tail_trace.reserve(instruction_budget < TraceCapacity ? instruction_budget : TraceCapacity);
     if (instruction_budget == 0) {
         result.reason = StopReason::NoInstructionsRequested;
         result.message = "Instruction budget is zero; no instructions executed.";
@@ -87,22 +88,24 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
             cpu_.pc() == active_exception_vector &&
             (cpu_.cop0_status() & Cpu::StatusExl) != 0U;
         const std::uint32_t cause = cpu_.cop0_cause();
-        if (result.trace.size() < TraceCapacity) {
-            TraceEntry entry;
-            entry.pc = instruction_pc;
-            entry.instruction = static_cast<std::uint32_t>(raw_instruction);
-            entry.fetched = fetched;
-            entry.delay_slot = delay_slot;
-            entry.instruction_completed = instruction_completed;
-            entry.exception_taken = exception_taken;
-            entry.exception_code = exception_taken ? ((cause >> 2U) & 0x1FU) : 0U;
-            entry.exception_in_delay_slot = exception_taken && ((cause & Cpu::CauseBd) != 0U);
-            entry.exception_epc = exception_taken ? cpu_.cop0_epc() : 0U;
-            entry.bad_vaddr = exception_taken ? cpu_.cop0_bad_vaddr() : 0U;
-            entry.next_pc = cpu_.next_pc();
-            entry.cop0_status = cpu_.cop0_status();
+        TraceEntry entry;
+        entry.pc = instruction_pc;
+        entry.instruction = static_cast<std::uint32_t>(raw_instruction);
+        entry.fetched = fetched;
+        entry.delay_slot = delay_slot;
+        entry.instruction_completed = instruction_completed;
+        entry.exception_taken = exception_taken;
+        entry.exception_code = exception_taken ? ((cause >> 2U) & 0x1FU) : 0U;
+        entry.exception_in_delay_slot = exception_taken && ((cause & Cpu::CauseBd) != 0U);
+        entry.exception_epc = exception_taken ? cpu_.cop0_epc() : 0U;
+        entry.bad_vaddr = exception_taken ? cpu_.cop0_bad_vaddr() : 0U;
+        entry.next_pc = cpu_.next_pc();
+        entry.cop0_status = cpu_.cop0_status();
+        if (result.trace.size() < TraceCapacity)
             result.trace.push_back(entry);
-        }
+        if (result.tail_trace.size() == TraceCapacity)
+            result.tail_trace.erase(result.tail_trace.begin());
+        result.tail_trace.push_back(entry);
 
         if (!instruction_completed) {
             // A fetched instruction can raise an architected exception (for

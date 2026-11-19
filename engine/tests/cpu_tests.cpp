@@ -832,6 +832,94 @@ int main() {
     check(cpu.step(rtype(1, 2, 3, 0x2F)) && cpu.reg(3) == 0x7FFFFFFFFFFFFFFFULL,
           "DSUBU wraps without a signed-overflow exception");
 
+    // The shared PS2 BIOS distinguishes the EE from the IOP using COP0 PRId.
+    // The EE reset state must identify the R5900 (model 0x2E), and PRId is read-only.
+    cpu.reset();
+    const auto cop0_mfc0 = [](std::uint32_t rt, std::uint32_t rd) {
+        return (0x10U << 26U) | (rt << 16U) | (rd << 11U);
+    };
+    const auto cop0_mtc0 = [](std::uint32_t rt, std::uint32_t rd) {
+        return (0x10U << 26U) | (0x04U << 21U) | (rt << 16U) | (rd << 11U);
+    };
+    check(cpu.step(cop0_mfc0(1, 15)) && cpu.reg(1) == Cpu::EeProcessorId,
+          "EE reset exposes the R5900 PRId used by the BIOS CPU detector");
+    cpu.reset();
+    cpu.set_reg(2, 0U);
+    check(!cpu.step(cop0_mtc0(2, 15)) &&
+              ((cpu.cop0_cause() >> 2U) & 0x1FU) == Cpu::ExcReservedInstruction,
+          "MTC0 cannot overwrite the read-only PRId register");
+
+    // BIOS installs its initial EE mappings with MTC0 + TLBWI.
+    cpu.reset();
+    cpu.set_reg(1, 3U); // TLB index
+    cpu.set_reg(2, 0x00006000U); // PageMask
+    cpu.set_reg(3, 0x00012345U); // EntryHi
+    cpu.set_reg(4, 0x00001F07U); // EntryLo0
+    cpu.set_reg(5, 0x00002307U); // EntryLo1
+    check(cpu.step(cop0_mtc0(1, 0)) && cpu.step(cop0_mtc0(2, 5)) &&
+              cpu.step(cop0_mtc0(3, 10)) && cpu.step(cop0_mtc0(4, 2)) &&
+              cpu.step(cop0_mtc0(5, 3)),
+          "MTC0 prepares an indexed TLB entry");
+    constexpr std::uint32_t tlbwi = (0x10U << 26U) | (0x10U << 21U) | 0x02U;
+    constexpr std::uint32_t tlbr = (0x10U << 26U) | (0x10U << 21U) | 0x01U;
+    check(cpu.step(tlbwi), "TLBWI writes the selected EE TLB entry");
+    cpu.set_reg(6, 0U); cpu.set_reg(7, 0U); cpu.set_reg(8, 0U);
+    check(cpu.step(cop0_mtc0(6, 5)) && cpu.step(cop0_mtc0(7, 10)) &&
+              cpu.step(cop0_mtc0(8, 2)) && cpu.step(cop0_mtc0(8, 3)) &&
+              cpu.step(tlbr),
+          "TLBR reads back the indexed EE TLB entry");
+    check(cpu.step(cop0_mfc0(9, 5)) && cpu.reg(9) == 0x00006000U &&
+              cpu.step(cop0_mfc0(9, 10)) && cpu.reg(9) == 0x00012345U &&
+              cpu.step(cop0_mfc0(9, 2)) && cpu.reg(9) == 0x00001F07U &&
+              cpu.step(cop0_mfc0(9, 3)) && cpu.reg(9) == 0x00002307U,
+          "TLBR restores PageMask, EntryHi, EntryLo0 and EntryLo1");
+
+    // The R5900's second integer multiply/divide pipeline is used by RESET.
+    cpu.reset();
+    cpu.set_reg(1, 100U); cpu.set_reg(2, 7U);
+    constexpr std::uint32_t divu1 = (0x1CU << 26U) | (1U << 21U) | (2U << 16U) | 0x1BU;
+    constexpr std::uint32_t mflo1_r3 = (0x1CU << 26U) | (3U << 11U) | 0x12U;
+    constexpr std::uint32_t mfhi1_r4 = (0x1CU << 26U) | (4U << 11U) | 0x10U;
+    check(cpu.step(divu1) && cpu.step(mflo1_r3) && cpu.step(mfhi1_r4) &&
+              cpu.reg(3) == 14U && cpu.reg(4) == 2U,
+          "DIVU1 and MFLO1/MFHI1 produce quotient and remainder in pipeline one");
+    cpu.reset(); cpu.set_reg(1, static_cast<std::uint64_t>(-100LL)); cpu.set_reg(2, 7U);
+    constexpr std::uint32_t div1 = (0x1CU << 26U) | (1U << 21U) | (2U << 16U) | 0x1AU;
+    check(cpu.step(div1) && cpu.step(mflo1_r3) && cpu.step(mfhi1_r4) &&
+              cpu.reg(3) == static_cast<std::uint64_t>(-14LL) &&
+              cpu.reg(4) == static_cast<std::uint64_t>(-2LL),
+          "DIV1 uses signed 32-bit division in pipeline one");
+
+    // Scalar COP1 context transfers used by the retail BIOS exception handlers.
+    retroshelf::Ps2EeMemoryMap fpu_memory;
+    cpu.reset();
+    cpu.set_reg(1, 1U << 29U);
+    const std::uint32_t mtc0_status_cu1 = (0x10U << 26U) | (0x04U << 21U) |
+                                          (1U << 16U) | (12U << 11U);
+    check(cpu.step(mtc0_status_cu1), "MTC0 enables the EE COP1 unit");
+    cpu.set_reg(2, 0x3F800000U);
+    constexpr std::uint32_t mtc1 = (0x11U << 26U) | (0x04U << 21U) |
+                                   (2U << 16U) | (3U << 11U);
+    check(cpu.step(mtc1), "MTC1 transfers a GPR word into an FPR");
+    cpu.set_reg(1, 0x200U);
+    const auto put_instruction = [&fpu_memory](std::uint32_t address, std::uint32_t word) {
+        auto& ram = fpu_memory.main_ram();
+        for (unsigned i = 0; i < 4; ++i)
+            ram[address + i] = static_cast<std::uint8_t>(word >> (i * 8U));
+    };
+    put_instruction(0x100U, (0x39U << 26U) | (1U << 21U) | (3U << 16U)); // SWC1 f3,0(r1)
+    put_instruction(0x104U, (0x31U << 26U) | (1U << 21U) | (4U << 16U)); // LWC1 f4,0(r1)
+    put_instruction(0x108U, (0x11U << 26U) | (5U << 16U) | (4U << 11U)); // MFC1 r5,f4
+    cpu.set_pc(0x100U);
+    std::uint64_t fpu_saved_value = 0;
+    check(cpu.step_from_ee_memory(fpu_memory) &&
+              fpu_memory.read(0x200U, 4U, fpu_saved_value, &error) &&
+              fpu_saved_value == 0x3F800000U,
+          "SWC1 stores the selected FPR value to EE RAM");
+    check(cpu.step_from_ee_memory(fpu_memory) && cpu.step(0x44052000U) &&
+              cpu.reg(5) == 0x3F800000U,
+          "LWC1 and MFC1 restore a saved scalar FPR value");
+
     // COP0 boot/exception control: MFC0, MTC0 and ERET.
     const auto cop0 = [](std::uint32_t move, std::uint32_t rt, std::uint32_t rd) {
         return (0x10U << 26U) | (move << 21U) | (rt << 16U) | (rd << 11U);

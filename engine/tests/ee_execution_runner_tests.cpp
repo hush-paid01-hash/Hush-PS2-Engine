@@ -189,6 +189,25 @@ int main() {
     cpu.set_pc(start);
     const auto bounded = runner.run(retroshelf::EeExecutionRunner::TraceCapacity + 1U);
     assert(bounded.trace.size() == retroshelf::EeExecutionRunner::TraceCapacity);
+    assert(bounded.tail_trace.size() == retroshelf::EeExecutionRunner::TraceCapacity);
+
+    // Long runs retain both the initial and final bounded trace windows.
+    constexpr std::uint32_t tail_start = 0x80004000U;
+    constexpr std::size_t tail_budget = retroshelf::EeExecutionRunner::TraceCapacity + 44U;
+    for (std::size_t i = 0; i < tail_budget; ++i)
+        assert(memory.write(tail_start + static_cast<std::uint32_t>(i * 4U), 4, 0U, &error));
+    cpu.reset();
+    cpu.set_pc(tail_start);
+    const auto tail_window = runner.run(tail_budget);
+    assert(tail_window.instructions_executed == tail_budget);
+    assert(tail_window.trace.size() == retroshelf::EeExecutionRunner::TraceCapacity);
+    assert(tail_window.tail_trace.size() == retroshelf::EeExecutionRunner::TraceCapacity);
+    assert(tail_window.trace.front().pc == tail_start);
+    assert(tail_window.tail_trace.front().pc ==
+           tail_start + static_cast<std::uint32_t>(44U * 4U));
+    assert(tail_window.tail_trace.back().pc ==
+           tail_start + static_cast<std::uint32_t>((tail_budget - 1U) * 4U));
+
     // A branch in a branch delay slot currently fails without entering the
     // exception vector. Report this as an execution error, not a fetch fault.
     cpu.reset();

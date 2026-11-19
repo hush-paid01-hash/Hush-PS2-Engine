@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -39,8 +40,8 @@ bool normalize_ee_address(std::uint64_t address, std::uint32_t& normalized) {
 
 Cpu::Cpu() { reset(); }
 void Cpu::reset() {
-    gpr_.fill(0); gpr_high_.fill(0); memory_.fill(0); vu0_vf_ = {}; vu0_control_.fill(0); vu0_vf_[0][3] = 0x3F800000U; active_ram_ = nullptr; active_ram_base_ = 0; active_ee_memory_ = nullptr; active_system_bus_ = nullptr; pc_ = 0; next_pc_ = 4;
-    delay_slot_pending_ = false; delay_branch_pc_ = 0; cop0_regs_.fill(0); cop0_regs_[1] = 47U; status_ = 0; cause_ = 0; epc_ = 0; bad_vaddr_ = 0; hi_ = 0; lo_ = 0; sa_ = 0;
+    gpr_.fill(0); gpr_high_.fill(0); memory_.fill(0); vu0_vf_ = {}; vu0_control_.fill(0); fpr_.fill(0); fcr31_ = 0; vu0_vf_[0][3] = 0x3F800000U; active_ram_ = nullptr; active_ram_base_ = 0; active_ee_memory_ = nullptr; active_system_bus_ = nullptr; pc_ = 0; next_pc_ = 4;
+    delay_slot_pending_ = false; delay_branch_pc_ = 0; cop0_regs_.fill(0); cop0_regs_[1] = 47U; cop0_regs_[15] = EeProcessorId; tlb_ = {}; status_ = 0; cause_ = 0; epc_ = 0; bad_vaddr_ = 0; hi_ = 0; lo_ = 0; hi1_ = 0; lo1_ = 0; sa_ = 0;
 }
 std::uint64_t Cpu::reg(std::size_t index) const { return index < RegisterCount ? gpr_[index] : 0; }
 void Cpu::set_reg(std::size_t index, std::uint64_t value) {
@@ -464,6 +465,71 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
         const std::uint64_t lhs_high = reg_high(rs);
         const std::uint64_t rhs_low = reg(rt);
         const std::uint64_t rhs_high = reg_high(rt);
+        if (funct == 0x10U) { set_reg(rd, hi1_); return true; } // MFHI1
+        if (funct == 0x11U) { hi1_ = reg(rs); return true; } // MTHI1
+        if (funct == 0x12U) { set_reg(rd, lo1_); return true; } // MFLO1
+        if (funct == 0x13U) { lo1_ = reg(rs); return true; } // MTLO1
+        if (funct == 0x18U || funct == 0x19U) { // MULT1 / MULTU1
+            if (funct == 0x18U) {
+                const std::int64_t product =
+                    static_cast<std::int64_t>(static_cast<std::int32_t>(lhs_low)) *
+                    static_cast<std::int64_t>(static_cast<std::int32_t>(rhs_low));
+                lo1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(
+                    static_cast<std::int32_t>(static_cast<std::uint32_t>(product))));
+                hi1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(
+                    static_cast<std::int32_t>(static_cast<std::uint32_t>(product >> 32U))));
+            } else {
+                const std::uint64_t product =
+                    static_cast<std::uint64_t>(static_cast<std::uint32_t>(lhs_low)) *
+                    static_cast<std::uint64_t>(static_cast<std::uint32_t>(rhs_low));
+                lo1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(
+                    static_cast<std::int32_t>(static_cast<std::uint32_t>(product))));
+                hi1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(
+                    static_cast<std::int32_t>(static_cast<std::uint32_t>(product >> 32U))));
+            }
+            return true;
+        }
+        if (funct == 0x1AU || funct == 0x1BU) { // DIV1 / DIVU1
+            const std::uint32_t dividend = static_cast<std::uint32_t>(lhs_low);
+            const std::uint32_t divisor = static_cast<std::uint32_t>(rhs_low);
+            std::uint32_t quotient = 0xFFFFFFFFU;
+            std::uint32_t remainder = dividend;
+            if (divisor != 0U) {
+                if (funct == 0x1BU) {
+                    quotient = dividend / divisor;
+                    remainder = dividend % divisor;
+                } else {
+                    const std::int32_t signed_dividend = static_cast<std::int32_t>(dividend);
+                    const std::int32_t signed_divisor = static_cast<std::int32_t>(divisor);
+                    if (signed_dividend == std::numeric_limits<std::int32_t>::min() && signed_divisor == -1) {
+                        quotient = 0x80000000U;
+                        remainder = 0U;
+                    } else {
+                        quotient = static_cast<std::uint32_t>(signed_dividend / signed_divisor);
+                        remainder = static_cast<std::uint32_t>(signed_dividend % signed_divisor);
+                    }
+                }
+            }
+            lo1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(quotient)));
+            hi1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(remainder)));
+            return true;
+        }
+        if (funct == 0x20U || funct == 0x21U) { // MADD1 / MADDU1
+            const std::uint64_t accumulator =
+                (static_cast<std::uint64_t>(static_cast<std::uint32_t>(hi1_)) << 32U) |
+                static_cast<std::uint32_t>(lo1_);
+            const std::uint64_t product = funct == 0x20U
+                ? static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(lhs_low)) *
+                                             static_cast<std::int64_t>(static_cast<std::int32_t>(rhs_low)))
+                : static_cast<std::uint64_t>(static_cast<std::uint32_t>(lhs_low)) *
+                  static_cast<std::uint64_t>(static_cast<std::uint32_t>(rhs_low));
+            const std::uint64_t result = accumulator + product;
+            const std::uint32_t low_word = static_cast<std::uint32_t>(result);
+            const std::uint32_t high_word = static_cast<std::uint32_t>(result >> 32U);
+            lo1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(low_word)));
+            hi1_ = static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(high_word)));
+            return true;
+        }
         if (funct == 0x28U && sub_op == 0x10U) { // PADDUW: four unsigned saturated word additions.
             const std::uint64_t lhs[2] = {lhs_low, lhs_high};
             const std::uint64_t rhs[2] = {rhs_low, rhs_high};
@@ -934,6 +1000,42 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
         }
         return unsupported();
     }
+    case 0x11: { // COP1 scalar FPU transfers and conditional branches.
+        if ((status_ & (1U << 29U)) == 0U) {
+            if (error) *error = "COP1 unusable: Status.CU1 is disabled";
+            raise_exception(11U, cur_pc, in_delay);
+            return false;
+        }
+        if (rs == 0x00U) { // MFC1
+            set_reg(rt, static_cast<std::uint64_t>(
+                static_cast<std::int64_t>(static_cast<std::int32_t>(fpr_[rd]))));
+            return true;
+        }
+        if (rs == 0x02U) { // CFC1: FCR0/FCR31.
+            const std::uint32_t value = rd == 0U ? 0x00002E30U :
+                                        rd == 31U ? fcr31_ : 0U;
+            set_reg(rt, static_cast<std::uint64_t>(
+                static_cast<std::int64_t>(static_cast<std::int32_t>(value))));
+            return true;
+        }
+        if (rs == 0x04U) { // MTC1
+            fpr_[rd] = static_cast<std::uint32_t>(reg(rt));
+            return true;
+        }
+        if (rs == 0x06U) { // CTC1: only FCR31 is writable in this subset.
+            if (rd == 31U) fcr31_ = static_cast<std::uint32_t>(reg(rt));
+            return true;
+        }
+        if (rs == 0x08U) { // BC1F/BC1T and likely variants.
+            const bool likely = (rt & 0x02U) != 0U;
+            const bool branch_true = (rt & 0x01U) != 0U;
+            if ((rt & ~0x03U) != 0U) return unsupported();
+            const bool condition = (fcr31_ & (1U << 23U)) != 0U;
+            const bool taken = condition == branch_true;
+            return likely ? branch_likely(taken, rel_target) : branch(taken, rel_target);
+        }
+        return unsupported();
+    }
     case 0x12: {
         // MacroOP field-type 1 upper instruction: VADD.dest fd, fs, ft.
         // The four-bit destination mask is x/y/z/w = 8/4/2/1.
@@ -1015,7 +1117,7 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
             case 25: case 28: case 29: case 30:
                 value = cop0_regs_[index]; return true;
             case 1: value = cop0_regs_[1]; return true; // Random
-            case 15: value = cop0_regs_[index]; return true; // PRId placeholder
+            case 15: value = cop0_regs_[index]; return true; // R5900 PRId is read-only
             case 12: value = status_; return true; // Status
             case 13: value = cause_; return true;  // Cause
             case 8: value = bad_vaddr_; return true; // BadVAddr (read-only)
@@ -1056,6 +1158,46 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
             case 14: epc_ = reg(rt); return true;
             default: return unsupported();
             }
+        }
+        if (rs == 0x10 && funct == 0x01) { // TLBR: read the indexed TLB entry.
+            const std::uint32_t index = cop0_regs_[0] & 0x3FU;
+            if (index >= tlb_.size()) return unsupported();
+            cop0_regs_[5] = tlb_[index].page_mask;
+            cop0_regs_[10] = tlb_[index].entry_hi;
+            cop0_regs_[2] = tlb_[index].entry_lo0;
+            cop0_regs_[3] = tlb_[index].entry_lo1;
+            return true;
+        }
+        if (rs == 0x10 && funct == 0x02) { // TLBWI: write the indexed TLB entry.
+            const std::uint32_t index = cop0_regs_[0] & 0x3FU;
+            if (index >= tlb_.size()) return unsupported();
+            tlb_[index] = {cop0_regs_[5], cop0_regs_[10],
+                           cop0_regs_[2], cop0_regs_[3]};
+            return true;
+        }
+        if (rs == 0x10 && funct == 0x06) { // TLBWR: write the Random entry.
+            const std::uint32_t index = std::min(cop0_regs_[1], 47U);
+            tlb_[index] = {cop0_regs_[5], cop0_regs_[10],
+                           cop0_regs_[2], cop0_regs_[3]};
+            return true;
+        }
+        if (rs == 0x10 && funct == 0x08) { // TLBP: probe VPN2 and ASID.
+            const std::uint32_t target = cop0_regs_[10];
+            const std::uint32_t asid = target & 0xFFU;
+            cop0_regs_[0] = 0x80000000U;
+            for (std::uint32_t index = 0; index < tlb_.size(); ++index) {
+                const auto& entry = tlb_[index];
+                const std::uint32_t page_mask = entry.page_mask & 0x01FFE000U;
+                const std::uint32_t compare_mask = 0xFFFFE000U & ~page_mask;
+                const bool global = (entry.entry_lo0 & 1U) != 0U &&
+                                    (entry.entry_lo1 & 1U) != 0U;
+                if ((global || (entry.entry_hi & 0xFFU) == asid) &&
+                    ((entry.entry_hi ^ target) & compare_mask) == 0U) {
+                    cop0_regs_[0] = index;
+                    break;
+                }
+            }
+            return true;
         }
         if (rs == 0x10 && funct == 0x18) { // ERET: ERL/ErrorEPC takes priority over EXL/EPC.
             if ((status_ & StatusErl) != 0U) {
@@ -1338,6 +1480,34 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
                 return fault("Unmapped EE LQ/SQ load");
             set_reg(rt, low);
             set_reg_high(rt, high);
+        }
+        return true;
+    }
+    case 0x31: case 0x39: { // LWC1/SWC1: scalar single-precision FPU transfers.
+        const bool store = opcode == 0x39U;
+        const std::uint64_t address = reg(rs) + static_cast<std::uint64_t>(simm);
+        const auto fault = [&](const char* message) {
+            if (error) *error = message;
+            bad_vaddr_ = address;
+            raise_exception(store ? ExcAddressErrorStore : ExcAddressErrorLoad, cur_pc, in_delay);
+            return false;
+        };
+        if ((status_ & (1U << 29U)) == 0U) {
+            if (error) *error = "COP1 unusable: Status.CU1 is disabled";
+            raise_exception(11U, cur_pc, in_delay);
+            return false;
+        }
+        std::uint32_t normalized_address = 0;
+        if (!normalize_ee_address(address, normalized_address))
+            return fault("COP1 effective address exceeds 32-bit EE address space");
+        if (store) {
+            if (!ee_write(normalized_address, 4U, fpr_[rt]))
+                return fault("Unaligned or unmapped SWC1 store");
+        } else {
+            std::uint64_t value = 0;
+            if (!ee_read(normalized_address, 4U, value))
+                return fault("Unaligned or unmapped LWC1 load");
+            fpr_[rt] = static_cast<std::uint32_t>(value);
         }
         return true;
     }

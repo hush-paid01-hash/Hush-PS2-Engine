@@ -13,9 +13,15 @@ bool is_bios_window_address(std::uint32_t address) {
 } // namespace
 
 Ps2EeMemoryMap::Ps2EeMemoryMap()
-    : ram_(MainRamSize, 0), iop_ram_(IopRamSize, 0), scratchpad_(ScratchpadSize, 0) {}
+    : ram_(MainRamSize, 0), iop_ram_(IopRamSize, 0), scratchpad_(ScratchpadSize, 0) {
+    ee_sio_registers_[0x10] = 0x60U; // transmitter holding/shift registers empty
+    ee_sio_registers_[0x30] = 0x02U; // transmit FIFO empty
+}
 Ps2EeMemoryMap::Ps2EeMemoryMap(std::size_t main_ram_size)
-    : ram_(main_ram_size, 0), iop_ram_(IopRamSize, 0), scratchpad_(ScratchpadSize, 0) {}
+    : ram_(main_ram_size, 0), iop_ram_(IopRamSize, 0), scratchpad_(ScratchpadSize, 0) {
+    ee_sio_registers_[0x10] = 0x60U;
+    ee_sio_registers_[0x30] = 0x02U;
+}
 std::size_t Ps2EeMemoryMap::main_ram_size() const { return ram_.size(); }
 std::vector<std::uint8_t>& Ps2EeMemoryMap::main_ram() { return ram_; }
 const std::vector<std::uint8_t>& Ps2EeMemoryMap::main_ram() const { return ram_; }
@@ -41,6 +47,11 @@ std::uint32_t Ps2EeMemoryMap::iop_post2_last_value() const { return iop_post2_la
 std::size_t Ps2EeMemoryMap::iop_post2_write_count() const { return iop_post2_write_count_; }
 std::uint32_t Ps2EeMemoryMap::iop_post3_last_value() const { return iop_post3_last_value_; }
 std::size_t Ps2EeMemoryMap::iop_post3_write_count() const { return iop_post3_write_count_; }
+void Ps2EeMemoryMap::raise_iop_interrupt(std::uint16_t bits) {
+    iop_interrupt_status_ = static_cast<std::uint16_t>(iop_interrupt_status_ | bits);
+}
+std::uint16_t Ps2EeMemoryMap::iop_interrupt_status() const { return iop_interrupt_status_; }
+std::uint16_t Ps2EeMemoryMap::iop_interrupt_mask() const { return iop_interrupt_mask_; }
 
 bool Ps2EeMemoryMap::resolve_scratchpad(std::uint32_t address, std::size_t width,
                                         std::size_t& offset, std::string* error) const {
@@ -150,6 +161,26 @@ bool Ps2EeMemoryMap::read(std::uint32_t address, std::size_t width,
     }
     const std::uint32_t physical = address >= Kseg0Base && address < 0xC0000000U
         ? address & SegmentMask : address;
+    const auto read_iop_irq_register = [&](std::uint32_t base, std::uint16_t reg) {
+        if (physical == base && width == 4U) {
+            value = reg;
+            return true;
+        }
+        if (physical >= base &&
+            static_cast<std::uint64_t>(physical - base) + width <= sizeof(reg)) {
+            const std::size_t byte_offset = physical - base;
+            value = 0;
+            for (std::size_t i = 0; i < width; ++i)
+                value |= static_cast<std::uint64_t>((reg >> ((byte_offset + i) * 8U)) & 0xFFU) << (i * 8U);
+            return true;
+        }
+        return false;
+    };
+    if (read_iop_irq_register(IopInterruptStatusAddress, iop_interrupt_status_) ||
+        read_iop_irq_register(IopInterruptMaskAddress, iop_interrupt_mask_)) {
+        if (error) error->clear();
+        return true;
+    }
     if (physical == EeMchRicmAddress && width == 4U) {
         value = 0;
         if (error) error->clear();
@@ -173,6 +204,41 @@ bool Ps2EeMemoryMap::read(std::uint32_t address, std::size_t width,
             default: break;
             }
         }
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == EeRdramControllerStatusAddress && width == 4U) {
+        // F410 is undocumented. Existing PS2 hardware emulation models reads
+        // as zero; do not invent a one-read busy handshake for this register.
+        value = 0;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= EeRdramControllerBase &&
+        static_cast<std::uint64_t>(physical - EeRdramControllerBase) + width <= EeRdramControllerSize) {
+        const std::size_t offset = physical - EeRdramControllerBase;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i)
+            value |= static_cast<std::uint64_t>(ee_rdram_controller_registers_[offset + i]) << (8U * i);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == EeMemoryControllerControlAddress && width == 4U) {
+        value = ee_memory_controller_control_;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == EeDmacEnableStatusAddress && width == 4U) {
+        value = 0x00001201U | (ee_dmac_disabled_ ? 0x00010000U : 0U);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= EeSioRegisterBase &&
+        static_cast<std::uint64_t>(physical - EeSioRegisterBase) + width <= EeSioRegisterSize) {
+        const std::size_t offset = physical - EeSioRegisterBase;
+        value = 0;
+        for (std::size_t i = 0; i < width; ++i)
+            value |= static_cast<std::uint64_t>(ee_sio_registers_[offset + i]) << (8U * i);
         if (error) error->clear();
         return true;
     }
@@ -316,6 +382,35 @@ bool Ps2EeMemoryMap::write(std::uint32_t address, std::size_t width,
         return value >= Kseg0Base && value < 0xC0000000U ? value & SegmentMask : value;
     };
     const std::uint32_t physical = canonical(address);
+    const auto write_iop_irq_register = [&](std::uint32_t base, std::uint16_t& reg,
+                                            bool write_one_to_clear) {
+        std::size_t byte_offset = 0;
+        std::size_t access_width = width;
+        if (physical == base && width == 4U) {
+            access_width = sizeof(reg);
+        } else if (physical >= base &&
+                   static_cast<std::uint64_t>(physical - base) + width <= sizeof(reg)) {
+            byte_offset = physical - base;
+        } else {
+            return false;
+        }
+        std::uint16_t written_bits = 0;
+        for (std::size_t i = 0; i < access_width; ++i)
+            written_bits |= static_cast<std::uint16_t>(((value >> (i * 8U)) & 0xFFU) << ((byte_offset + i) * 8U));
+        if (write_one_to_clear) {
+            reg = static_cast<std::uint16_t>(reg & ~written_bits);
+        } else {
+            const std::uint16_t mask = static_cast<std::uint16_t>(
+                ((access_width == 2U ? 0xFFFFU : 0xFFU) << (byte_offset * 8U)));
+            reg = static_cast<std::uint16_t>((reg & ~mask) | (written_bits & mask));
+        }
+        return true;
+    };
+    if (write_iop_irq_register(IopInterruptStatusAddress, iop_interrupt_status_, true) ||
+        write_iop_irq_register(IopInterruptMaskAddress, iop_interrupt_mask_, false)) {
+        if (error) error->clear();
+        return true;
+    }
     if (physical == EeMchRicmAddress && width == 4U) {
         const std::uint32_t sa = (static_cast<std::uint32_t>(value) >> 16U) & 0xFFFU;
         const std::uint32_t sbc = (static_cast<std::uint32_t>(value) >> 6U) & 0xFU;
@@ -327,6 +422,32 @@ bool Ps2EeMemoryMap::write(std::uint32_t address, std::size_t width,
     }
     if (physical == EeMchDrdAddress && width == 4U) {
         ee_mch_drd_ = static_cast<std::uint32_t>(value);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= EeRdramControllerBase &&
+        static_cast<std::uint64_t>(physical - EeRdramControllerBase) + width <= EeRdramControllerSize) {
+        const std::size_t offset = physical - EeRdramControllerBase;
+        for (std::size_t i = 0; i < width; ++i)
+            ee_rdram_controller_registers_[offset + i] = static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == EeMemoryControllerControlAddress && width == 4U) {
+        ee_memory_controller_control_ = static_cast<std::uint32_t>(value);
+        if (error) error->clear();
+        return true;
+    }
+    if (physical == EeDmacEnableControlAddress && width == 4U) {
+        ee_dmac_disabled_ = (static_cast<std::uint32_t>(value) & 0x00010000U) != 0U;
+        if (error) error->clear();
+        return true;
+    }
+    if (physical >= EeSioRegisterBase &&
+        static_cast<std::uint64_t>(physical - EeSioRegisterBase) + width <= EeSioRegisterSize) {
+        const std::size_t offset = physical - EeSioRegisterBase;
+        for (std::size_t i = 0; i < width; ++i)
+            ee_sio_registers_[offset + i] = static_cast<std::uint8_t>((value >> (8U * i)) & 0xFFU);
         if (error) error->clear();
         return true;
     }

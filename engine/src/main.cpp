@@ -3,6 +3,12 @@
 #include "retroshelf/iso9660_disc.hpp"
 #include "retroshelf/ps2_disc_execution.hpp"
 #include "retroshelf/ps2_ee_memory_map.hpp"
+#include "retroshelf/system_bus.hpp"
+#include "retroshelf/ee_interrupt_controller.hpp"
+#include "retroshelf/ee_timer.hpp"
+#include "retroshelf/ee_gif_dmac.hpp"
+#include "retroshelf/ee_gif_gs_runtime.hpp"
+#include <memory>
 
 #include <algorithm>
 #include <cstdint>
@@ -32,18 +38,23 @@ void print_trace(const retroshelf::EeExecutionRunner::Result& result) {
     std::cout << "Instructions executed: " << result.instructions_executed << "\n"
               << "Final PC: 0x" << std::hex << result.final_pc << std::dec << "\n"
               << "Stop reason: " << stop_reason(result.reason) << "\n"
-              << "Detail: " << result.message << "\n"
-              << "Trace entries: " << result.trace.size() << "\n";
-    for (const auto& entry : result.trace) {
-        std::cout << "PC=0x" << std::hex << std::setw(8) << std::setfill('0') << entry.pc
-                  << " instruction=0x" << std::setw(8) << entry.instruction
-                  << std::dec << " fetched=" << (entry.fetched ? "yes" : "no")
-                  << " completed=" << (entry.instruction_completed ? "yes" : "no");
-        if (entry.exception_taken)
-            std::cout << " exception=" << entry.exception_code
-                      << " EPC=0x" << std::hex << entry.exception_epc << std::dec;
-        std::cout << "\n";
-    }
+              << "Detail: " << result.message << "\n";
+    const auto print_entries = [](const char* label,
+                                  const std::vector<retroshelf::EeExecutionRunner::TraceEntry>& entries) {
+        std::cout << label << " (" << entries.size() << "):\n";
+        for (const auto& entry : entries) {
+            std::cout << "PC=0x" << std::hex << std::setw(8) << std::setfill('0') << entry.pc
+                      << " instruction=0x" << std::setw(8) << entry.instruction
+                      << std::dec << " fetched=" << (entry.fetched ? "yes" : "no")
+                      << " completed=" << (entry.instruction_completed ? "yes" : "no");
+            if (entry.exception_taken)
+                std::cout << " exception=" << entry.exception_code
+                          << " EPC=0x" << std::hex << entry.exception_epc << std::dec;
+            std::cout << "\n";
+        }
+    };
+    print_entries("First trace entries", result.trace);
+    print_entries("Last trace entries", result.tail_trace);
 }
 
 bool parse_budget(const char* text, std::size_t& budget) {
@@ -72,9 +83,27 @@ int run_bios(const std::string& path, std::size_t budget) {
         return 2;
     }
     retroshelf::Cpu cpu;
-    retroshelf::EeExecutionRunner runner(cpu, memory);
+    retroshelf::SystemBus bus(memory);
+    auto intc = std::make_shared<retroshelf::EeInterruptController>();
+    auto timers = std::make_shared<retroshelf::EeTimerBlock>();
+    auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
+    auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
+    auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
+        *gif_runtime, *dmac_global);
+    if (!bus.map_mmio(retroshelf::EeInterruptController::RegisterBase,
+                      retroshelf::EeInterruptController::RegisterSize, intc, &error) ||
+        !bus.map_mmio(retroshelf::EeTimerBlock::RegisterBase,
+                      retroshelf::EeTimerBlock::RegisterSize, timers, &error) ||
+        !bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
+                      retroshelf::EeGifDmacChannel2::RegisterSize, gif_channel, &error) ||
+        !bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
+                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error)) {
+        std::cerr << "Cannot map EE diagnostic devices: " << error << "\n";
+        return 2;
+    }
+    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers);
     const auto result = runner.run_from_bios_reset_vector(budget);
-    std::cout << "BIOS reset-vector diagnostic (not a complete firmware boot)\n";
+    std::cout << "BIOS reset-vector diagnostic with partial EE devices (not a complete firmware boot)\n";
     print_trace(result);
     return result.instructions_executed > 0 ? 0 : 3;
 }

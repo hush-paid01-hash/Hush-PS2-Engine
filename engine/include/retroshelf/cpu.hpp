@@ -46,6 +46,9 @@ public:
     static constexpr std::uint32_t StatusExl = 1U << 1U;
     static constexpr std::uint32_t StatusErl = 1U << 2U;
     static constexpr std::uint32_t StatusBev = 1U << 22U;
+    // R5900 implementation/revision ID (model 0x2E, revision 0x20),
+    // used by the shared PS2 BIOS reset stub to select the EE boot path.
+    static constexpr std::uint32_t EeProcessorId = 0x00002E20U;
     static constexpr std::uint32_t CauseEeInterruptPending = 1U << 10U;
     static constexpr std::uint32_t CauseTimerInterruptPending = 1U << 15U;
     static constexpr std::uint32_t ExcSyscall = 8;
@@ -74,6 +77,9 @@ private:
     // control-register slots (VI0-VI15 occupy the low 16 bits of slots 0-15).
     std::array<std::array<std::uint32_t, 4>, 32> vu0_vf_{};
     std::array<std::uint32_t, 32> vu0_control_{};
+    // Scalar COP1 register file and FCR31 condition/control state.
+    std::array<std::uint32_t, 32> fpr_{};
+    std::uint32_t fcr31_{};
     std::array<std::uint64_t, RegisterCount> gpr_high_{};
     std::array<std::uint8_t, TestMemorySize> memory_{};
     void raise_exception(std::uint32_t code, std::uint64_t fault_pc, bool in_delay_slot);
@@ -87,12 +93,22 @@ private:
     bool delay_slot_pending_{false};
     std::uint64_t delay_branch_pc_{0};
     std::array<std::uint32_t, RegisterCount> cop0_regs_{};
+    struct TlbEntry {
+        std::uint32_t page_mask{};
+        std::uint32_t entry_hi{};
+        std::uint32_t entry_lo0{};
+        std::uint32_t entry_lo1{};
+    };
+    std::array<TlbEntry, 48> tlb_{};
     std::uint32_t status_{0};
     std::uint32_t cause_{0};
     std::uint64_t epc_{0};
     std::uint64_t bad_vaddr_{0};
     std::uint64_t hi_{0};
     std::uint64_t lo_{0};
+    // R5900's second multiply/divide pipeline (upper halves of HI/LO).
+    std::uint64_t hi1_{0};
+    std::uint64_t lo1_{0};
     // EE Shift Amount register used by MTSAB/MTSAH/MTSA and QFSRV.
     std::uint32_t sa_{0};
 };
