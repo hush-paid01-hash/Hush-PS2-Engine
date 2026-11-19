@@ -50,9 +50,11 @@ public:
         StopReason reason{StopReason::NotStarted};
         std::uint64_t final_pc{0};
         std::string message;
-        // First TraceCapacity attempted instructions in this run. Keeping the
-        // trace bounded makes it safe to use while diagnosing a BIOS boot loop.
+        // First and last TraceCapacity attempted instructions. Keeping both
+        // windows bounded makes long BIOS diagnostics useful without unbounded
+        // memory growth.
         std::vector<TraceEntry> trace;
+        std::vector<TraceEntry> tail_trace;
     };
 
     EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory);
