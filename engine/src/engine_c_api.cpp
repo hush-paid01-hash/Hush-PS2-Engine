@@ -222,6 +222,11 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
             case retroshelf::EeExecutionRunner::StopReason::InvalidInstructionFetch:
                 *stop_reason = 2;
                 break;
+            case retroshelf::EeExecutionRunner::StopReason::NotStarted:
+            case retroshelf::EeExecutionRunner::StopReason::NoInstructionsRequested:
+            case retroshelf::EeExecutionRunner::StopReason::ExecutionError:
+                *stop_reason = 3;
+                break;
         }
     }
     return 1;
@@ -288,6 +293,11 @@ extern "C" int32_t retroshelf_engine_run_disc_subset(
                 break;
             case retroshelf::EeExecutionRunner::StopReason::InvalidInstructionFetch:
                 *stop_reason = 2;
+                break;
+            case retroshelf::EeExecutionRunner::StopReason::NotStarted:
+            case retroshelf::EeExecutionRunner::StopReason::NoInstructionsRequested:
+            case retroshelf::EeExecutionRunner::StopReason::ExecutionError:
+                *stop_reason = 3;
                 break;
         }
     }

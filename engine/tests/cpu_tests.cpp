@@ -723,7 +723,7 @@ int main() {
     check(cpu.step(rtype(1, 2, 3, 0x23)) && cpu.reg(3) == 0x7FFFFFFFULL,
           "SUBU sign-extends a positive 32-bit result");
     cpu.reset();
-    check(cpu.step(itype(0x0F, 0, 4, 0x8000)) && cpu.reg(4) == 0xFFFFFFFF80000000ULL,
+    check(cpu.step(itype(0x0F, 0, 4, -32768)) && cpu.reg(4) == 0xFFFFFFFF80000000ULL,
           "LUI sign-extends its 32-bit result on the EE");
 
     // EE 64-bit immediate arithmetic: sign extension and overflow behavior.
