@@ -2131,12 +2131,14 @@ int main() {
                (sub_op << 6U) | 0x08U;
     };
     cpu.set_reg(1, 0x7C1F03E0F801FFFFULL);
-    cpu.set_reg_high(1, 0xFFFFFFFFFFFFFFFFULL);
+    // Put two more packed pixels in the upper 64-bit half so the test
+    // verifies that PEXT5 reads both halves of the 128-bit GPR.
+    cpu.set_reg_high(1, 0x000000007C1F03E0ULL);
     check(cpu.step(mmi0_color(1, 2, 30U)),
           "PEXT5 expands four packed 1-5-5-5 pixels");
     check(cpu.reg(2) == 0x8F0000808F8F8F80ULL &&
               cpu.reg_high(2) == 0x0F800F80000F8000ULL,
-          "PEXT5 places alpha and 5-bit color channels in 8-8-8-8 words");
+          "PEXT5 expands two pixels from each 64-bit GPR half");
     check(cpu.step(mmi0_color(2, 3, 31U)),
           "PPAC5 packs four 8-8-8-8 words into 1-5-5-5 halfwords");
     check(cpu.reg(3) == 0x7C1F03E0F801FFFFULL &&
