@@ -34,6 +34,7 @@ Ps2DiscExecutionResult load_and_execute_ps2_disc(const Iso9660Disc& disc,
     auto gif_runtime = std::make_shared<EeGifGsRuntime>(memory, 320, 240);
     auto dmac_global = std::make_shared<EeDmacGlobalRegisters>();
     auto vif1 = std::make_shared<EeVif1Registers>();
+    auto vif1_fifo = std::make_shared<EeVif1Fifo>(*vif1);
     auto gif_channel = std::make_shared<EeGifDmacChannel2>(*gif_runtime, *dmac_global);
 
     if (!bus.map_mmio(EeInterruptController::RegisterBase,
@@ -45,7 +46,9 @@ Ps2DiscExecutionResult load_and_execute_ps2_disc(const Iso9660Disc& disc,
         !bus.map_mmio(EeDmacGlobalRegisters::RegisterBase,
                       EeDmacGlobalRegisters::RegisterSize, dmac_global, &result.error) ||
         !bus.map_mmio(EeVif1Registers::RegisterBase,
-                      EeVif1Registers::RegisterSize, vif1, &result.error)) {
+                      EeVif1Registers::RegisterSize, vif1, &result.error) ||
+        !bus.map_mmio(EeVif1Fifo::RegisterBase, EeVif1Fifo::RegisterSize,
+                      vif1_fifo, &result.error)) {
         result.image_loaded = false;
         return result;
     }

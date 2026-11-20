@@ -36,6 +36,7 @@ int main() {
     retroshelf::SystemBus bus(memory);
     auto timers = std::make_shared<retroshelf::EeTimerBlock>();
     auto vif1 = std::make_shared<retroshelf::EeVif1Registers>();
+    auto vif1_fifo = std::make_shared<retroshelf::EeVif1Fifo>(*vif1);
     std::string error;
     check(bus.map_mmio(retroshelf::EeTimerBlock::RegisterBase,
                        retroshelf::EeTimerBlock::RegisterSize, timers, &error),
@@ -43,6 +44,9 @@ int main() {
     check(bus.map_mmio(retroshelf::EeVif1Registers::RegisterBase,
                        retroshelf::EeVif1Registers::RegisterSize, vif1, &error),
           "map VIF1 register window alongside timers");
+    check(bus.map_mmio(retroshelf::EeVif1Fifo::RegisterBase,
+                       retroshelf::EeVif1Fifo::RegisterSize, vif1_fifo, &error),
+          "map VIF1 128-bit FIFO data port");
 
     constexpr auto base = retroshelf::EeVif1Registers::RegisterBase;
     write32(bus, base + retroshelf::EeVif1Registers::CycleOffset, 0x00050302U);
@@ -97,6 +101,53 @@ int main() {
     check(read32(bus, base) == 0U &&
           read32(bus, base + retroshelf::EeVif1Registers::ErrOffset) == 0x2U,
           "VIF1_FBRST reset restores register defaults");
+
+    // Exercise the 16-quadword FIFO through the guest-visible MMIO port.
+    constexpr auto fifo_base = retroshelf::EeVif1Fifo::RegisterBase;
+    std::vector<std::uint8_t> quadword(16U);
+    std::vector<std::uint8_t> empty_read;
+    check(!bus.read(fifo_base, 16U, empty_read, &error),
+          "empty VIF1 FIFO reports underflow");
+    bool pushed_all = true;
+    for (std::size_t q = 0; q < retroshelf::EeVif1Fifo::Capacity; ++q) {
+        for (std::size_t b = 0; b < quadword.size(); ++b)
+            quadword[b] = static_cast<std::uint8_t>(q * 16U + b);
+        if (!bus.write(fifo_base, quadword, &error)) pushed_all = false;
+    }
+    check(pushed_all && vif1_fifo->count() == 16U &&
+          ((read32(bus, base) & retroshelf::EeVif1Registers::StatFqcMask) >>
+           retroshelf::EeVif1Registers::StatFqcShift) == 16U,
+          "VIF1 FIFO accepts sixteen quadwords and reports FQC");
+    check(!bus.write(fifo_base, quadword, &error),
+          "full VIF1 FIFO reports overflow without overwriting data");
+    bool popped_all = true;
+    for (std::size_t q = 0; q < retroshelf::EeVif1Fifo::Capacity; ++q) {
+        std::vector<std::uint8_t> received;
+        if (!bus.read(fifo_base, 16U, received, &error) || received.size() != 16U ||
+            received[0] != static_cast<std::uint8_t>(q * 16U) ||
+            received[15] != static_cast<std::uint8_t>(q * 16U + 15U))
+            popped_all = false;
+    }
+    check(popped_all && vif1_fifo->count() == 0U &&
+          (read32(bus, base) & retroshelf::EeVif1Registers::StatFqcMask) == 0U,
+          "VIF1 FIFO preserves order and clears FQC when drained");
+    quadword.assign(16U, 0xA5U);
+    check(!bus.write(fifo_base + 1U, quadword, &error),
+          "VIF1 FIFO rejects nonzero data-port offsets");
+    check(!bus.write(fifo_base, std::vector<std::uint8_t>(8U), &error),
+          "VIF1 FIFO rejects non-128-bit writes");
+    check(bus.write(fifo_base, quadword, &error),
+          "VIF1 FIFO accepts a quadword after draining");
+    vif1_fifo->reset();
+    check(vif1_fifo->count() == 0U &&
+          (read32(bus, base) & retroshelf::EeVif1Registers::StatFqcMask) == 0U,
+          "VIF1 FIFO reset empties queue and status count");
+    vif1->set_fifo_direction(true);
+    check((read32(bus, base) & retroshelf::EeVif1Registers::StatFdr) != 0U,
+          "VIF1_STAT exposes FIFO direction flag");
+    vif1->set_fifo_direction(false);
+    check((read32(bus, base) & retroshelf::EeVif1Registers::StatFdr) == 0U,
+          "VIF1_STAT clears FIFO direction flag");
 
     std::vector<std::uint8_t> bytes;
     check(!bus.read(base + 4U, 4, bytes, &error),

@@ -1,5 +1,7 @@
 #include "retroshelf/ee_vif1.hpp"
 
+#include <algorithm>
+
 namespace retroshelf {
 
 void EeVif1Registers::encode_u32(std::uint32_t value, std::vector<std::uint8_t>& data) {
@@ -114,5 +116,66 @@ void EeVif1Registers::clear_status_flags(std::uint32_t flags) {
 void EeVif1Registers::set_command_status(std::uint32_t vps) {
     status_ = (status_ & ~StatVpsMask) | (vps & StatVpsMask);
 }
+void EeVif1Registers::set_fifo_count(std::size_t count) {
+    const auto bounded = static_cast<std::uint32_t>(count > 31U ? 31U : count);
+    status_ = (status_ & ~StatFqcMask) | (bounded << StatFqcShift);
+}
+void EeVif1Registers::set_fifo_direction(bool read_from_vif) {
+    if (read_from_vif) status_ |= StatFdr;
+    else status_ &= ~StatFdr;
+}
+
+EeVif1Fifo::EeVif1Fifo(EeVif1Registers& registers) : registers_(registers) {
+    update_status();
+}
+
+bool EeVif1Fifo::read(std::uint32_t offset, std::size_t size,
+                      std::vector<std::uint8_t>& data, std::string* error) const {
+    if (offset != 0U || size != QuadwordSize) {
+        if (error) *error = "VIF1 FIFO requires a 128-bit access at offset zero";
+        data.clear();
+        return false;
+    }
+    if (count_ == 0U) {
+        if (error) *error = "VIF1 FIFO underflow";
+        data.clear();
+        return false;
+    }
+    data.assign(entries_[head_].begin(), entries_[head_].end());
+    // MmioDevice::read is const; FIFO reads mutate hardware state. The ring
+    // state is mutable only for this consuming data-port operation.
+    head_ = (head_ + 1U) % Capacity;
+    --count_;
+    update_status();
+    if (error) error->clear();
+    return true;
+}
+
+bool EeVif1Fifo::write(std::uint32_t offset, const std::vector<std::uint8_t>& data,
+                       std::string* error) {
+    if (offset != 0U || data.size() != QuadwordSize) {
+        if (error) *error = "VIF1 FIFO requires a 128-bit access at offset zero";
+        return false;
+    }
+    if (count_ == Capacity) {
+        if (error) *error = "VIF1 FIFO overflow";
+        return false;
+    }
+    const std::size_t tail = (head_ + count_) % Capacity;
+    std::copy(data.begin(), data.end(), entries_[tail].begin());
+    ++count_;
+    update_status();
+    if (error) error->clear();
+    return true;
+}
+
+void EeVif1Fifo::reset() {
+    head_ = 0U;
+    count_ = 0U;
+    for (auto& entry : entries_) entry.fill(0U);
+    update_status();
+}
+std::size_t EeVif1Fifo::count() const { return count_; }
+void EeVif1Fifo::update_status() const { registers_.set_fifo_count(count_); }
 
 } // namespace retroshelf

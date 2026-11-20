@@ -3,6 +3,7 @@
 #include "retroshelf/system_bus.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -45,6 +46,8 @@ public:
     static constexpr std::uint32_t StatEr0 = 1U << 12U;
     static constexpr std::uint32_t StatEr1 = 1U << 13U;
     static constexpr std::uint32_t StatFdr = 1U << 23U;
+    static constexpr std::uint32_t StatFqcShift = 24U;
+    static constexpr std::uint32_t StatFqcMask = 0x1FU << StatFqcShift;
 
     bool read(std::uint32_t offset, std::size_t size,
               std::vector<std::uint8_t>& data,
@@ -57,6 +60,8 @@ public:
     void set_status_flags(std::uint32_t flags);
     void clear_status_flags(std::uint32_t flags);
     void set_command_status(std::uint32_t vps);
+    void set_fifo_count(std::size_t count);
+    void set_fifo_direction(bool read_from_vif);
 
 private:
     static void encode_u32(std::uint32_t value, std::vector<std::uint8_t>& data);
@@ -79,6 +84,33 @@ private:
     std::uint32_t top_{0};
     std::array<std::uint32_t, 4> row_{};
     std::array<std::uint32_t, 4> column_{};
+};
+
+// VIF1 FIFO data port. The hardware FIFO holds sixteen 128-bit quadwords.
+// Transfers are deliberately strict: only one aligned quadword access is
+// accepted, and empty/full accesses fail instead of silently losing data.
+class EeVif1Fifo final : public MmioDevice {
+public:
+    static constexpr std::uint32_t RegisterBase = 0x10005000U;
+    static constexpr std::uint32_t RegisterSize = 0x10U;
+    static constexpr std::size_t Capacity = 16U;
+    static constexpr std::size_t QuadwordSize = 16U;
+
+    explicit EeVif1Fifo(EeVif1Registers& registers);
+    bool read(std::uint32_t offset, std::size_t size,
+              std::vector<std::uint8_t>& data,
+              std::string* error = nullptr) const override;
+    bool write(std::uint32_t offset, const std::vector<std::uint8_t>& data,
+               std::string* error = nullptr) override;
+    void reset();
+    std::size_t count() const;
+
+private:
+    void update_status() const;
+    EeVif1Registers& registers_;
+    mutable std::array<std::array<std::uint8_t, QuadwordSize>, Capacity> entries_{};
+    mutable std::size_t head_{0};
+    mutable std::size_t count_{0};
 };
 
 } // namespace retroshelf

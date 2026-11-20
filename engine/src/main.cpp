@@ -90,6 +90,7 @@ int run_bios(const std::string& path, std::size_t budget) {
     auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
     auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
     auto vif1 = std::make_shared<retroshelf::EeVif1Registers>();
+    auto vif1_fifo = std::make_shared<retroshelf::EeVif1Fifo>(*vif1);
     auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
         *gif_runtime, *dmac_global);
     if (!bus.map_mmio(retroshelf::EeInterruptController::RegisterBase,
@@ -101,7 +102,9 @@ int run_bios(const std::string& path, std::size_t budget) {
         !bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
                       retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error) ||
         !bus.map_mmio(retroshelf::EeVif1Registers::RegisterBase,
-                      retroshelf::EeVif1Registers::RegisterSize, vif1, &error)) {
+                      retroshelf::EeVif1Registers::RegisterSize, vif1, &error) ||
+        !bus.map_mmio(retroshelf::EeVif1Fifo::RegisterBase,
+                      retroshelf::EeVif1Fifo::RegisterSize, vif1_fifo, &error)) {
         std::cerr << "Cannot map EE diagnostic devices: " << error << "\n";
         return 2;
     }
