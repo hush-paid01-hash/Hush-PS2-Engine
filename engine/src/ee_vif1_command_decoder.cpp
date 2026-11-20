@@ -33,6 +33,8 @@ void EeVif1CommandDecoder::reset() {
     pending_num_ = pending_immediate_ = 0;
     unpack_address_ = unpack_remaining_ = 0;
     unpack_format_ = unpack_payload_bytes_ = 0;
+    unpack_components_ = unpack_component_bits_ = 0;
+    unpack_unsigned_ = false;
     error_code_ = 0;
     last_error_ = "";
     registers_.set_command_status(0U);
@@ -70,15 +72,33 @@ bool EeVif1CommandDecoder::process_available() {
                 return true;
             }
             std::uint8_t vector[16]{};
-            if (unpack_format_ == 0U) {
-                const std::uint32_t scalar = load_u32(pending_.data());
-                for (std::size_t lane = 0; lane < 4U; ++lane) {
-                    for (std::size_t byte = 0; byte < 4U; ++byte)
-                        vector[lane * 4U + byte] =
-                            static_cast<std::uint8_t>(scalar >> (byte * 8U));
+            std::uint32_t components[4]{};
+            for (std::uint32_t component = 0; component < unpack_components_; ++component) {
+                std::uint32_t raw = 0;
+                const std::uint32_t bit_offset = component * unpack_component_bits_;
+                for (std::uint32_t bit = 0; bit < unpack_component_bits_; ++bit) {
+                    const std::uint32_t source_bit = bit_offset + bit;
+                    raw |= static_cast<std::uint32_t>(
+                        (pending_[source_bit / 8U] >> (source_bit & 7U)) & 1U) << bit;
                 }
-            } else {
-                std::copy_n(pending_.data(), 16U, vector);
+                if (!unpack_unsigned_ && unpack_component_bits_ < 32U &&
+                    (raw & (1U << (unpack_component_bits_ - 1U))) != 0U)
+                    raw |= (~0U << unpack_component_bits_);
+                components[component] = raw;
+            }
+            if (unpack_components_ == 1U) {
+                components[1] = components[2] = components[3] = components[0];
+            } else if (unpack_components_ == 2U) {
+                // PS2 V2 unpack writes the first two values twice. The upper
+                // pair is documented as indeterminate; duplication matches
+                // observed hardware compatibility behavior.
+                components[2] = components[0];
+                components[3] = components[1];
+            }
+            for (std::size_t lane = 0; lane < 4U; ++lane) {
+                for (std::size_t byte = 0; byte < 4U; ++byte)
+                    vector[lane * 4U + byte] =
+                        static_cast<std::uint8_t>(components[lane] >> (byte * 8U));
             }
             if (!memory_.write_data(unpack_address_, vector, sizeof(vector))) {
                 set_error("VIF1 UNPACK exceeds VU1 data memory");
@@ -200,8 +220,8 @@ bool EeVif1CommandDecoder::execute_command(std::uint32_t code) {
 
     if (opcode >= 0x60U && opcode <= 0x7FU) {
         const std::uint32_t format = opcode & 0x0FU;
-        if ((opcode & 0x10U) != 0U || (format != 0U && format != 0x0CU)) {
-            set_error("VIF1 UNPACK currently supports unmasked S-32 and V4-32 only");
+        if ((opcode & 0x10U) != 0U || format == 0x0FU) {
+            set_error("VIF1 UNPACK write masks and V4-5 are not implemented yet");
             return false;
         }
         const std::uint32_t count = num == 0U ? 256U : num;
@@ -209,14 +229,28 @@ bool EeVif1CommandDecoder::execute_command(std::uint32_t code) {
             const std::uint32_t address =
                 ((immediate & 0x3FFU) + registers_.tops()) * 16U;
             if (address >= Vu1Memory::DataMemorySize) {
-                set_error("VIF1 S-32 UNPACK TOPS address is outside VU1 data memory");
+                set_error("VIF1 UNPACK TOPS address is outside VU1 data memory");
                 return false;
             }
             unpack_address_ = address;
         } else {
             unpack_address_ = (immediate & 0x3FFU) * 16U;
         }
-        const std::uint32_t bytes_per_vector = format == 0U ? 4U : 16U;
+        static constexpr std::uint8_t component_counts[16] = {
+            1, 1, 1, 0, 2, 2, 2, 0, 3, 3, 3, 0, 4, 4, 4, 0
+        };
+        static constexpr std::uint8_t component_widths[16] = {
+            32, 16, 8, 0, 32, 16, 8, 0, 32, 16, 8, 0, 32, 16, 8, 0
+        };
+        unpack_components_ = component_counts[format];
+        unpack_component_bits_ = component_widths[format];
+        if (unpack_components_ == 0U) {
+            set_error("VIF1 UNPACK format is reserved or unsupported");
+            return false;
+        }
+        unpack_unsigned_ = (immediate & 0x4000U) != 0U;
+        const std::uint32_t input_bits = unpack_components_ * unpack_component_bits_;
+        const std::uint32_t bytes_per_vector = ((input_bits + 31U) / 32U) * 4U;
         if (count > (Vu1Memory::DataMemorySize - unpack_address_) / 16U) {
             set_error("VIF1 UNPACK vector range exceeds VU1 data memory");
             return false;

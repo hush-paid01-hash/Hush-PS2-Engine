@@ -33,6 +33,35 @@ int main() {
  check(decoder.consume(v4.data(),v4.size()),"decodes a V4-32 UNPACK vector");
  std::array<std::uint8_t,16> v4read{}; check(mem.read_data(64U,v4read.data(),v4read.size()),"reads V4-32 destination vector");
  check(v4read[0]==0x04 && v4read[4]==0x14 && v4read[8]==0x24 && v4read[12]==0x34,"V4-32 preserves all four input components");
+ // Packed scalar/vector UNPACK formats: each input vector is padded to a
+ // 32-bit boundary, then expanded to the VU's four 32-bit lanes.
+ std::vector<std::uint8_t> s16; append32(s16,0x61010006U); append32(s16,0x0000FFFEU);
+ check(decoder.consume(s16.data(),s16.size()),"decodes signed S-16 UNPACK");
+ std::array<std::uint8_t,16> s16read{}; mem.read_data(96U,s16read.data(),s16read.size());
+ check(s16read[0]==0xFE && s16read[1]==0xFF && s16read[3]==0xFF && s16read[15]==0xFF,"S-16 sign-extends and replicates scalar into four lanes");
+ std::vector<std::uint8_t> s8; append32(s8,0x62010007U); append32(s8,0x00000080U);
+ check(decoder.consume(s8.data(),s8.size()),"decodes signed S-8 UNPACK");
+ std::array<std::uint8_t,16> s8read{}; mem.read_data(112U,s8read.data(),s8read.size());
+ check(s8read[0]==0x80 && s8read[1]==0xFF && s8read[15]==0xFF,"S-8 sign-extends and replicates scalar into four lanes");
+ std::vector<std::uint8_t> s8_unsigned; append32(s8_unsigned,0x6201400AU); append32(s8_unsigned,0x00000080U);
+ check(decoder.consume(s8_unsigned.data(),s8_unsigned.size()),"decodes zero-extended S-8 UNPACK");
+ std::array<std::uint8_t,16> s8u_read{}; mem.read_data(160U,s8u_read.data(),s8u_read.size());
+ check(s8u_read[0]==0x80 && s8u_read[1]==0 && s8u_read[15]==0,"S-8 honors the UNPACK zero-extension flag");
+ std::vector<std::uint8_t> v2; append32(v2,0x64010008U); append32(v2,0x12345678U); append32(v2,0xABCDEF01U);
+ check(decoder.consume(v2.data(),v2.size()),"decodes V2-32 UNPACK");
+ std::array<std::uint8_t,16> v2read{}; mem.read_data(128U,v2read.data(),v2read.size());
+ check(v2read[0]==0x78 && v2read[4]==0x01 && v2read[8]==0x78 && v2read[12]==0x01,"V2-32 expands two components into repeated x/y and z/w lanes");
+ std::vector<std::uint8_t> v3; append32(v3,0x68010009U); append32(v3,0x01020304U); append32(v3,0x11121314U); append32(v3,0x21222324U);
+ check(decoder.consume(v3.data(),v3.size()),"decodes V3-32 UNPACK");
+ std::array<std::uint8_t,16> v3read{}; mem.read_data(144U,v3read.data(),v3read.size());
+ check(v3read[0]==0x04 && v3read[4]==0x14 && v3read[8]==0x24 && v3read[12]==0,"V3-32 writes three components and deterministic zero in unused w lane");
+ std::vector<std::uint8_t> v4_16; append32(v4_16,0x6D01000BU); append32(v4_16,0x22221111U); append32(v4_16,0x44443333U);
+ check(decoder.consume(v4_16.data(),v4_16.size()),"decodes V4-16 UNPACK");
+ std::array<std::uint8_t,16> v4_16_read{}; mem.read_data(176U,v4_16_read.data(),v4_16_read.size());
+ check(v4_16_read[0]==0x11 && v4_16_read[4]==0x22 && v4_16_read[8]==0x33 && v4_16_read[12]==0x44,"V4-16 expands four packed 16-bit components");
+ std::vector<std::uint8_t> invalid_unpack; append32(invalid_unpack,0x6301000CU);
+ check(!decoder.consume(invalid_unpack.data(),invalid_unpack.size()),"rejects reserved UNPACK format slots");
+ decoder.reset();
  std::vector<std::uint8_t> mpg; append32(mpg,0x4A010001U); append32(mpg,0x44332211U); append32(mpg,0x88776655U);
  check(decoder.consume(mpg.data(),5U),"buffers incomplete MPG microcode payload");
  check(decoder.consume(mpg.data()+5U,mpg.size()-5U),"resumes split MPG microcode upload");

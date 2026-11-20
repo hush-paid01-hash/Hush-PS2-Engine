@@ -10,7 +10,8 @@
 namespace retroshelf {
 
 // Incremental VIF1 command-stream decoder. This first execution slice supports
-// state-setting commands and S-32 UNPACK only; unsupported commands fail closed.
+// state-setting commands and the scalar/V2/V3/V4 8/16/32-bit UNPACK families;
+// unsupported commands and formats fail closed.
 class EeVif1CommandDecoder {
 public:
     EeVif1CommandDecoder(EeVif1Registers& registers, Vu1Memory& memory);
@@ -36,6 +37,9 @@ private:
     std::uint32_t unpack_remaining_{0};
     std::uint32_t unpack_format_{0};
     std::uint32_t unpack_payload_bytes_{0};
+    std::uint32_t unpack_components_{0};
+    std::uint32_t unpack_component_bits_{0};
+    bool unpack_unsigned_{false};
     std::uint32_t error_code_{0};
     const char* last_error_{""};
 };
