@@ -1,6 +1,7 @@
 #pragma once
 
 #include "retroshelf/ee_gif_gs_runtime.hpp"
+#include "retroshelf/ee_dmac_interrupt_source.hpp"
 #include "retroshelf/system_bus.hpp"
 
 #include <cstdint>
@@ -11,7 +12,7 @@ namespace retroshelf {
 
 // DMAC global status/control subset. Only the GIF channel completion source
 // is currently driven by EeGifDmacChannel2; other channels are not emulated.
-class EeDmacGlobalRegisters final : public MmioDevice {
+class EeDmacGlobalRegisters final : public MmioDevice, public EeDmacInterruptSource {
 public:
     static constexpr std::uint32_t RegisterBase = 0x1000E000U;
     static constexpr std::uint32_t RegisterSize = 0x70U;
@@ -36,7 +37,7 @@ public:
     bool dma_enabled() const;
     void set_channel_interrupt(std::uint32_t channel);
     void set_bus_error();
-    bool int1_pending() const;
+    bool int1_pending() const override;
     std::uint32_t status() const;
     std::uint32_t mask() const;
 

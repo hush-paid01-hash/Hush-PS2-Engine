@@ -1,5 +1,6 @@
 #include "retroshelf/cpu.hpp"
 #include "retroshelf/ee_gif_dmac.hpp"
+#include "retroshelf/ee_execution_runner.hpp"
 #include "retroshelf/ps2_ee_memory_map.hpp"
 #include "retroshelf/system_bus.hpp"
 
@@ -130,8 +131,29 @@ int main() {
     write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U,
                1U << (16U + 2U));
     check(globals->int1_pending(), "D_STAT channel-2 mask asserts DMAC INT1");
+
+    // DMAC INT1 is not an INTC source: the EE exposes it independently in
+    // COP0 Cause.IP2 (bit 11). Sample it through the actual execution runner.
+    constexpr std::uint32_t cause_probe = 0x180U;
+    constexpr std::uint32_t mfc0_t0_cause =
+        (0x10U << 26U) | (8U << 16U) | (13U << 11U);
+    write_instruction(memory, cause_probe, mfc0_t0_cause);
+    cpu.reset();
+    cpu.set_pc(cause_probe);
+    retroshelf::EeExecutionRunner dmac_runner(cpu, memory, bus, *globals);
+    const auto pending_probe = dmac_runner.run(1U);
+    check(pending_probe.instructions_executed == 1U &&
+              (cpu.reg(8) & retroshelf::Cpu::CauseDmacInterruptPending) != 0U,
+          "DMAC INT1 is exposed through COP0 Cause.IP2 independently of INTC");
+
     write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U, 1U << 2U);
     check(!globals->int1_pending(), "D_STAT write-one-to-clear deasserts channel interrupt");
+    write_instruction(memory, cause_probe + 4U, mfc0_t0_cause);
+    cpu.set_pc(cause_probe + 4U);
+    const auto cleared_probe = dmac_runner.run(1U);
+    check(cleared_probe.instructions_executed == 1U &&
+              (cpu.reg(8) & retroshelf::Cpu::CauseDmacInterruptPending) == 0U,
+          "clearing D_STAT deasserts COP0 Cause.IP2 on the next EE step");
 
     // Global DMA disable must reject a new transfer and leave STR clear.
     write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase, 0U);
