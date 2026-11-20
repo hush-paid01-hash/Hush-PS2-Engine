@@ -17,6 +17,12 @@ int main() {
  check(reg(regs,retroshelf::EeVif1Registers::CycleOffset)==0x101U && reg(regs,retroshelf::EeVif1Registers::ModeOffset)==2U,"STCYCL and STMOD update registers");
  check(reg(regs,retroshelf::EeVif1Registers::MaskOffset)==0xAABBCCDDU,"STMASK consumes its payload");
  check(reg(regs,retroshelf::EeVif1Registers::RowBaseOffset+0x30U)==4U && reg(regs,retroshelf::EeVif1Registers::ColumnBaseOffset+0x20U)==7U,"STROW and STCOL populate all lanes");
+ std::vector<std::uint8_t> top_setup; append32(top_setup,0x03000012U); append32(top_setup,0x02000007U);
+ regs.write(retroshelf::EeVif1Registers::TopsOffset, std::vector<std::uint8_t>{0x2A,0,0,0});
+ regs.set_status_flags(retroshelf::EeVif1Registers::StatDbf);
+ check(decoder.consume(top_setup.data(),top_setup.size()),"executes BASE and OFFSET double-buffer commands");
+ check(reg(regs,retroshelf::EeVif1Registers::OfstOffset)==7U && reg(regs,retroshelf::EeVif1Registers::BaseOffset)==0x2AU,"OFFSET stores OFST and copies TOPS into BASE");
+ check((regs.status() & retroshelf::EeVif1Registers::StatDbf)==0U,"OFFSET clears the VIF1 double-buffer flag");
  std::vector<std::uint8_t> unpack; append32(unpack,0x60020002U); append32(unpack,0x11223344U); append32(unpack,0x55667788U);
  check(decoder.consume(unpack.data(),6U),"buffers incomplete UNPACK input");
  check(decoder.consume(unpack.data()+6U,unpack.size()-6U),"resumes split S-32 UNPACK stream");

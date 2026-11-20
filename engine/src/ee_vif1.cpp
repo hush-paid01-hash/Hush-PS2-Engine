@@ -108,6 +108,9 @@ void EeVif1Registers::set_status_flags(std::uint32_t flags) {
     status_ |= flags & (StatVgw | StatMrk | StatDbf | StatVss | StatVfs |
                         StatVis | StatInt | StatEr0 | StatEr1);
 }
+void EeVif1Registers::clear_status_flags(std::uint32_t flags) {
+    status_ &= ~flags;
+}
 void EeVif1Registers::set_command_status(std::uint32_t vps) {
     status_ = (status_ & ~StatVpsMask) | (vps & StatVpsMask);
 }

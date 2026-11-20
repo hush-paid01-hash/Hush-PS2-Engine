@@ -159,6 +159,7 @@ bool EeVif1CommandDecoder::execute_command(std::uint32_t code) {
         return registers_.write(EeVif1Registers::CycleOffset, word);
     case 0x02: { // OFFSET (VIF1)
         if (!registers_.write(EeVif1Registers::OfstOffset, word)) return false;
+        registers_.clear_status_flags(EeVif1Registers::StatDbf);
         std::vector<std::uint8_t> base_word(4);
         const std::uint32_t tops = registers_.tops();
         for (std::size_t i = 0; i < 4U; ++i)

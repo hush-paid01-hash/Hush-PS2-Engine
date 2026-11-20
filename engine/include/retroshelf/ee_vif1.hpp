@@ -55,6 +55,7 @@ public:
     std::uint32_t status() const;
     std::uint32_t tops() const;
     void set_status_flags(std::uint32_t flags);
+    void clear_status_flags(std::uint32_t flags);
     void set_command_status(std::uint32_t vps);
 
 private:
