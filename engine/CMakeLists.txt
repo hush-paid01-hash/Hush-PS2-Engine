@@ -13,6 +13,7 @@ set(RETROSHELF_ENGINE_SOURCES
     src/system_bus.cpp
     src/ee_gif_dma.cpp
     src/ee_gif_dmac.cpp
+    src/ee_vif1.cpp
     src/ee_gif_gs_runtime.cpp
     src/gs_packet_processor.cpp
     src/gs_register_decoder.cpp
@@ -246,6 +247,12 @@ target_include_directories(ee-gif-dmac-tests PRIVATE include)
 target_compile_options(ee-gif-dmac-tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME ee-gif-dmac-tests COMMAND ee-gif-dmac-tests)
 
+
+add_executable(ee-vif1-register-tests tests/ee_vif1_register_tests.cpp
+    src/ee_vif1.cpp src/ee_timer.cpp src/system_bus.cpp src/ps2_ee_memory_map.cpp)
+target_include_directories(ee-vif1-register-tests PRIVATE include)
+target_compile_options(ee-vif1-register-tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME ee-vif1-register-tests COMMAND ee-vif1-register-tests)
 
 add_executable(gs-local-memory-tests tests/gs_local_memory_tests.cpp src/gs_local_memory.cpp)
 target_include_directories(gs-local-memory-tests PRIVATE include)

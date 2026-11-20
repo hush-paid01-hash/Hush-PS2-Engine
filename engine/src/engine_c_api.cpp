@@ -5,6 +5,7 @@
 #include "retroshelf/gs_framebuffer.hpp"
 #include "retroshelf/ee_gif_gs_runtime.hpp"
 #include "retroshelf/ee_gif_dmac.hpp"
+#include "retroshelf/ee_vif1.hpp"
 #include "retroshelf/ee_execution_runner.hpp"
 #include "retroshelf/gs_gif_pipeline.hpp"
 #include "retroshelf/gs_packet_processor.hpp"
@@ -192,12 +193,15 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
     // from INTC INT0 and reflected in COP0 Cause.IP2 by the runner.
     auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
     auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
+    auto vif1 = std::make_shared<retroshelf::EeVif1Registers>();
     auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
         *gif_runtime, *dmac_global);
     if (!bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
                       retroshelf::EeGifDmacChannel2::RegisterSize, gif_channel, &error) ||
         !bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
-                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error))
+                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error) ||
+        !bus.map_mmio(retroshelf::EeVif1Registers::RegisterBase,
+                      retroshelf::EeVif1Registers::RegisterSize, vif1, &error))
         return 0;
 
     const std::uint64_t budget = std::min<std::uint64_t>(instruction_budget, 1000000U);

@@ -15,7 +15,7 @@ namespace retroshelf {
 class EeTimerBlock final : public MmioDevice {
 public:
     static constexpr std::uint32_t RegisterBase = 0x10000000U;
-    static constexpr std::uint32_t RegisterSize = 0x4000U;
+    static constexpr std::uint32_t RegisterSize = 0x2000U;
     static constexpr std::uint32_t ChannelStride = 0x800U;
     static constexpr std::uint32_t CountOffset = 0x00U;
     static constexpr std::uint32_t ModeOffset = 0x10U;

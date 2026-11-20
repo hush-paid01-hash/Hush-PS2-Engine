@@ -7,6 +7,7 @@
 #include "retroshelf/ee_interrupt_controller.hpp"
 #include "retroshelf/ee_timer.hpp"
 #include "retroshelf/ee_gif_dmac.hpp"
+#include "retroshelf/ee_vif1.hpp"
 #include "retroshelf/ee_gif_gs_runtime.hpp"
 #include <memory>
 
@@ -88,6 +89,7 @@ int run_bios(const std::string& path, std::size_t budget) {
     auto timers = std::make_shared<retroshelf::EeTimerBlock>();
     auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
     auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
+    auto vif1 = std::make_shared<retroshelf::EeVif1Registers>();
     auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
         *gif_runtime, *dmac_global);
     if (!bus.map_mmio(retroshelf::EeInterruptController::RegisterBase,
@@ -97,7 +99,9 @@ int run_bios(const std::string& path, std::size_t budget) {
         !bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
                       retroshelf::EeGifDmacChannel2::RegisterSize, gif_channel, &error) ||
         !bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
-                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error)) {
+                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error) ||
+        !bus.map_mmio(retroshelf::EeVif1Registers::RegisterBase,
+                      retroshelf::EeVif1Registers::RegisterSize, vif1, &error)) {
         std::cerr << "Cannot map EE diagnostic devices: " << error << "\n";
         return 2;
     }
