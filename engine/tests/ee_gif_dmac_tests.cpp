@@ -148,6 +148,38 @@ int main() {
 
     write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U, 1U << 2U);
     check(!globals->int1_pending(), "D_STAT write-one-to-clear deasserts channel interrupt");
+    // D_STAT also exposes the stall and MFIFO-empty status/mask pairs.
+    globals->set_stall_interrupt();
+    check(!globals->int1_pending(), "stall status alone does not assert INT1");
+    write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U,
+               retroshelf::EeDmacGlobalRegisters::StallInterruptMask);
+    check(globals->int1_pending(), "stall status and enabled mask assert INT1");
+    write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U,
+               retroshelf::EeDmacGlobalRegisters::StallInterruptFlag);
+    check(!globals->int1_pending(), "clearing stall status deasserts INT1");
+
+    globals->set_mfifo_empty_interrupt();
+    check(!globals->int1_pending(), "MFIFO-empty status alone does not assert INT1");
+    write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U,
+               retroshelf::EeDmacGlobalRegisters::MfifoEmptyInterruptMask);
+    check(globals->int1_pending(), "MFIFO-empty status and enabled mask assert INT1");
+    write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U,
+               retroshelf::EeDmacGlobalRegisters::MfifoEmptyInterruptFlag);
+    check(!globals->int1_pending(), "clearing MFIFO-empty status deasserts INT1");
+
+    // BUSERR is the documented exception: it asserts INT1 without a D_STAT mask.
+    globals->set_bus_error();
+    check(globals->int1_pending(), "bus-error status asserts unmaskable INT1");
+    write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase + 0x10U,
+               retroshelf::EeDmacGlobalRegisters::BusErrorFlag);
+    check(!globals->int1_pending(), "clearing bus-error status deasserts INT1");
+
+    constexpr std::uint32_t documented_control = 0x000007F7U;
+    write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase, documented_control);
+    check(read_u32(bus, retroshelf::EeDmacGlobalRegisters::RegisterBase) ==
+              documented_control,
+          "D_CTRL preserves documented control fields for MMIO readback");
+    write_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase, 0U);
     write_instruction(memory, cause_probe + 4U, mfc0_t0_cause);
     cpu.set_pc(cause_probe + 4U);
     const auto cleared_probe = dmac_runner.run(1U);
