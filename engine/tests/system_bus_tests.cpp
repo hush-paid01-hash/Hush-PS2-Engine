@@ -28,6 +28,10 @@ int main(){
  check(bus.write(0x1004,{0x11,0x22,0x33,0x44},&error),"routes a 32-bit MMIO write");
  std::vector<std::uint8_t>data;
  check(bus.read(0x1004,4,data,&error)&&data==std::vector<std::uint8_t>({0x11,0x22,0x33,0x44}),"routes an MMIO read to the same device");
+ check(bus.write(0x1000,std::vector<std::uint8_t>(16,0x5A),&error),"routes an aligned 128-bit MMIO write");
+ check(bus.read(0x1000,16,data,&error)&&data==std::vector<std::uint8_t>(16,0x5A),"routes an aligned 128-bit MMIO read");
+ check(!bus.read(0x1004,16,data,&error)&&data.empty(),"rejects unaligned 128-bit MMIO reads");
+ check(!bus.write(0x1004,std::vector<std::uint8_t>(16,0xA5),&error),"rejects unaligned 128-bit MMIO writes");
  check(!bus.read(0x1002,4,data,&error)&&data.empty(),"rejects unaligned MMIO reads and clears output");
  check(!bus.write(0x1001,{0xAA,0xBB},&error),"rejects unaligned MMIO writes");
  check(!bus.read(0x1000,3,data,&error)&&data.empty(),"rejects unsupported MMIO access widths");

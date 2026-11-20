@@ -73,8 +73,8 @@ const SystemBus::MmioMapping* SystemBus::find_mmio(std::uint32_t address,
 
 bool SystemBus::valid_mmio_access(std::uint32_t address, std::size_t size,
                                   std::string* error) const {
-    if (size != 1 && size != 2 && size != 4 && size != 8) {
-        if (error != nullptr) *error = "MMIO access width must be 1, 2, 4, or 8 bytes";
+    if (size != 1 && size != 2 && size != 4 && size != 8 && size != 16) {
+        if (error != nullptr) *error = "MMIO access width must be 1, 2, 4, 8, or 16 bytes";
         return false;
     }
     if (address % size != 0) {
