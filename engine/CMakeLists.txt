@@ -14,6 +14,7 @@ set(RETROSHELF_ENGINE_SOURCES
     src/ee_gif_dma.cpp
     src/ee_gif_dmac.cpp
     src/ee_vif1.cpp
+    src/vu1_memory.cpp
     src/ee_gif_gs_runtime.cpp
     src/gs_packet_processor.cpp
     src/gs_register_decoder.cpp
@@ -258,3 +259,8 @@ add_executable(gs-local-memory-tests tests/gs_local_memory_tests.cpp src/gs_loca
 target_include_directories(gs-local-memory-tests PRIVATE include)
 target_compile_options(gs-local-memory-tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME gs-local-memory-tests COMMAND gs-local-memory-tests)
+
+add_executable(vu1-memory-tests tests/vu1_memory_tests.cpp src/vu1_memory.cpp)
+target_include_directories(vu1-memory-tests PRIVATE include)
+target_compile_options(vu1-memory-tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME vu1-memory-tests COMMAND vu1-memory-tests)
