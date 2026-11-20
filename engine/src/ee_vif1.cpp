@@ -103,6 +103,7 @@ bool EeVif1Registers::write(std::uint32_t offset, const std::vector<std::uint8_t
 }
 
 std::uint32_t EeVif1Registers::status() const { return status_; }
+std::uint32_t EeVif1Registers::tops() const { return tops_; }
 void EeVif1Registers::set_status_flags(std::uint32_t flags) {
     status_ |= flags & (StatVgw | StatMrk | StatDbf | StatVss | StatVfs |
                         StatVis | StatInt | StatEr0 | StatEr1);

@@ -14,6 +14,7 @@ set(RETROSHELF_ENGINE_SOURCES
     src/ee_gif_dma.cpp
     src/ee_gif_dmac.cpp
     src/ee_vif1.cpp
+    src/ee_vif1_command_decoder.cpp
     src/vu1_memory.cpp
     src/ee_gif_gs_runtime.cpp
     src/gs_packet_processor.cpp
@@ -264,3 +265,8 @@ add_executable(vu1-memory-tests tests/vu1_memory_tests.cpp src/vu1_memory.cpp)
 target_include_directories(vu1-memory-tests PRIVATE include)
 target_compile_options(vu1-memory-tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME vu1-memory-tests COMMAND vu1-memory-tests)
+
+add_executable(ee-vif1-command-tests tests/ee_vif1_command_tests.cpp src/ee_vif1.cpp src/ee_vif1_command_decoder.cpp src/vu1_memory.cpp)
+target_include_directories(ee-vif1-command-tests PRIVATE include)
+target_compile_options(ee-vif1-command-tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME ee-vif1-command-tests COMMAND ee-vif1-command-tests)
