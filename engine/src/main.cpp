@@ -101,7 +101,7 @@ int run_bios(const std::string& path, std::size_t budget) {
         std::cerr << "Cannot map EE diagnostic devices: " << error << "\n";
         return 2;
     }
-    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers);
+    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers, *dmac_global);
     const auto result = runner.run_from_bios_reset_vector(budget);
     std::cout << "BIOS reset-vector diagnostic with partial EE devices (not a complete firmware boot)\n";
     print_trace(result);

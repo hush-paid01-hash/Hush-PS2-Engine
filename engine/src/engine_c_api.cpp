@@ -188,8 +188,8 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
 
     // Expose the first implemented guest-programmable DMA path. The GIF
     // runtime reads the same EE memory map while the CPU sees channel/global
-    // registers through this execution bus. INT1 remains a polled D_STAT
-    // status source until the CPU interrupt model supports the separate line.
+    // registers through this execution bus. DMAC INT1 is sampled separately
+    // from INTC INT0 and reflected in COP0 Cause.IP2 by the runner.
     auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
     auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
     auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
@@ -201,7 +201,7 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
         return 0;
 
     const std::uint64_t budget = std::min<std::uint64_t>(instruction_budget, 1000000U);
-    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers);
+    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers, *dmac_global);
     // Exercise the reset vector with the currently modelled EE timer and INTC
     // devices connected. This remains a bounded smoke test, not a full BIOS boot.
     const auto result = runner.run_from_bios_reset_vector(static_cast<std::size_t>(budget));
