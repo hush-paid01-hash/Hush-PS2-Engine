@@ -102,6 +102,13 @@ bool EeVif1CommandDecoder::process_available() {
 }
 
 bool EeVif1CommandDecoder::consume_payload() {
+    if (pending_opcode_ == 0x4AU) {
+        if (!memory_.write_micro(pending_immediate_ * 8U, pending_.data(), payload_bytes_)) {
+            set_error("VIF1 MPG upload exceeds VU1 micro memory");
+            return false;
+        }
+        return true;
+    }
     if (pending_opcode_ == 0x20U) {
         std::vector<std::uint8_t> data(pending_.begin(),
                                        pending_.begin() + 4);
@@ -133,6 +140,10 @@ bool EeVif1CommandDecoder::execute_command(std::uint32_t code) {
         word[i] = static_cast<std::uint8_t>(immediate >> (i * 8U));
 
     registers_.set_command_status(2U);
+    std::vector<std::uint8_t> code_word(4);
+    for (std::size_t i = 0; i < 4U; ++i)
+        code_word[i] = static_cast<std::uint8_t>(code >> (i * 8U));
+    if (!registers_.write(EeVif1Registers::CodeOffset, code_word)) return false;
     if ((code & 0x80000000U) != 0U) {
         set_error("VIF1 interrupt commands require interrupt-controller integration");
         return false;
@@ -166,6 +177,22 @@ bool EeVif1CommandDecoder::execute_command(std::uint32_t code) {
         payload_bytes_ = opcode == 0x20U ? 4U : 16U;
         registers_.set_command_status(1U);
         return true;
+    case 0x4A: { // MPG: upload NUM * 8 bytes to VU1 micro memory.
+        const std::uint32_t count = num == 0U ? 256U : num;
+        const std::uint32_t destination = immediate * 8U;
+        const std::uint32_t bytes = count * 8U;
+        if (destination > Vu1Memory::MicroMemorySize ||
+            bytes > Vu1Memory::MicroMemorySize - destination) {
+            set_error("VIF1 MPG upload exceeds VU1 micro memory");
+            return false;
+        }
+        pending_opcode_ = opcode;
+        pending_num_ = count;
+        pending_immediate_ = immediate;
+        payload_bytes_ = bytes;
+        registers_.set_command_status(1U);
+        return true;
+    }
     default:
         break;
     }

@@ -27,6 +27,15 @@ int main() {
  check(decoder.consume(v4.data(),v4.size()),"decodes a V4-32 UNPACK vector");
  std::array<std::uint8_t,16> v4read{}; check(mem.read_data(64U,v4read.data(),v4read.size()),"reads V4-32 destination vector");
  check(v4read[0]==0x04 && v4read[4]==0x14 && v4read[8]==0x24 && v4read[12]==0x34,"V4-32 preserves all four input components");
+ std::vector<std::uint8_t> mpg; append32(mpg,0x4A010001U); append32(mpg,0x44332211U); append32(mpg,0x88776655U);
+ check(decoder.consume(mpg.data(),5U),"buffers incomplete MPG microcode payload");
+ check(decoder.consume(mpg.data()+5U,mpg.size()-5U),"resumes split MPG microcode upload");
+ std::array<std::uint8_t,16> micro{}; check(mem.read_micro(8U,micro.data(),micro.size()),"reads uploaded VU1 microcode");
+ check(micro[0]==0x11 && micro[4]==0x55,"MPG writes payload bytes at IMMEDIATE times eight");
+ check(reg(regs,retroshelf::EeVif1Registers::CodeOffset)==0x4A010001U,"CODE records the latest VIF1 command");
+ std::vector<std::uint8_t> mpg_overflow; append32(mpg_overflow,0x4A01FFFFU);
+ check(!decoder.consume(mpg_overflow.data(),mpg_overflow.size()),"rejects MPG destination overflow before payload transfer");
+ decoder.reset();
  std::vector<std::uint8_t> overflow; append32(overflow,0x6002FFFFU);
  check(!decoder.consume(overflow.data(),overflow.size()),"rejects UNPACK vector ranges that exceed VU1 memory before writing");
  decoder.reset();
