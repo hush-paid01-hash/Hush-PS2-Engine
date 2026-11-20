@@ -32,6 +32,7 @@ void EeVif1CommandDecoder::reset() {
     pending_opcode_ = 0;
     pending_num_ = pending_immediate_ = 0;
     unpack_address_ = unpack_remaining_ = 0;
+    unpack_format_ = unpack_payload_bytes_ = 0;
     error_code_ = 0;
     last_error_ = "";
     registers_.set_command_status(0U);
@@ -64,28 +65,29 @@ bool EeVif1CommandDecoder::process_available() {
             continue;
         }
         if (unpack_remaining_ != 0U) {
-            if (pending_.size() < 4U) {
+            if (pending_.size() < unpack_payload_bytes_) {
                 registers_.set_command_status(3U);
                 return true;
             }
-            const std::uint32_t scalar = load_u32(pending_.data());
-            const std::uint8_t vector[16] = {
-                static_cast<std::uint8_t>(scalar), static_cast<std::uint8_t>(scalar >> 8U),
-                static_cast<std::uint8_t>(scalar >> 16U), static_cast<std::uint8_t>(scalar >> 24U),
-                static_cast<std::uint8_t>(scalar), static_cast<std::uint8_t>(scalar >> 8U),
-                static_cast<std::uint8_t>(scalar >> 16U), static_cast<std::uint8_t>(scalar >> 24U),
-                static_cast<std::uint8_t>(scalar), static_cast<std::uint8_t>(scalar >> 8U),
-                static_cast<std::uint8_t>(scalar >> 16U), static_cast<std::uint8_t>(scalar >> 24U),
-                static_cast<std::uint8_t>(scalar), static_cast<std::uint8_t>(scalar >> 8U),
-                static_cast<std::uint8_t>(scalar >> 16U), static_cast<std::uint8_t>(scalar >> 24U)
-            };
+            std::uint8_t vector[16]{};
+            if (unpack_format_ == 0U) {
+                const std::uint32_t scalar = load_u32(pending_.data());
+                for (std::size_t lane = 0; lane < 4U; ++lane) {
+                    for (std::size_t byte = 0; byte < 4U; ++byte)
+                        vector[lane * 4U + byte] =
+                            static_cast<std::uint8_t>(scalar >> (byte * 8U));
+                }
+            } else {
+                std::copy_n(pending_.data(), 16U, vector);
+            }
             if (!memory_.write_data(unpack_address_, vector, sizeof(vector))) {
-                set_error("VIF1 S-32 UNPACK exceeds VU1 data memory");
+                set_error("VIF1 UNPACK exceeds VU1 data memory");
                 return false;
             }
             unpack_address_ += 16U;
             --unpack_remaining_;
-            pending_.erase(pending_.begin(), pending_.begin() + 4);
+            pending_.erase(pending_.begin(), pending_.begin() +
+                           static_cast<std::ptrdiff_t>(unpack_payload_bytes_));
             registers_.set_command_status(unpack_remaining_ == 0U ? 0U : 3U);
             continue;
         }
@@ -169,8 +171,9 @@ bool EeVif1CommandDecoder::execute_command(std::uint32_t code) {
     }
 
     if (opcode >= 0x60U && opcode <= 0x7FU) {
-        if ((opcode & 0x0FU) != 0U || (opcode & 0x10U) != 0U) {
-            set_error("VIF1 UNPACK currently implements S-32 format only");
+        const std::uint32_t format = opcode & 0x0FU;
+        if ((opcode & 0x10U) != 0U || (format != 0U && format != 0x0CU)) {
+            set_error("VIF1 UNPACK currently supports unmasked S-32 and V4-32 only");
             return false;
         }
         const std::uint32_t count = num == 0U ? 256U : num;
@@ -185,6 +188,13 @@ bool EeVif1CommandDecoder::execute_command(std::uint32_t code) {
         } else {
             unpack_address_ = (immediate & 0x3FFU) * 16U;
         }
+        const std::uint32_t bytes_per_vector = format == 0U ? 4U : 16U;
+        if (count > (Vu1Memory::DataMemorySize - unpack_address_) / 16U) {
+            set_error("VIF1 UNPACK vector range exceeds VU1 data memory");
+            return false;
+        }
+        unpack_format_ = format;
+        unpack_payload_bytes_ = bytes_per_vector;
         unpack_remaining_ = count;
         registers_.set_command_status(3U);
         return true;

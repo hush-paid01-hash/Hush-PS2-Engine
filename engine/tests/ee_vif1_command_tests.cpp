@@ -23,6 +23,13 @@ int main() {
  std::array<std::uint8_t,32> vectors{}; check(mem.read_data(32U,vectors.data(),vectors.size()),"reads decoded VU1 vectors");
  const std::array<std::uint8_t,4> a{{0x44,0x33,0x22,0x11}}, b{{0x88,0x77,0x66,0x55}}; bool replicated=true; for(std::size_t i=0;i<16;++i) replicated=replicated&&vectors[i]==a[i%4U]; for(std::size_t i=16;i<32;++i) replicated=replicated&&vectors[i]==b[i%4U];
  check(replicated,"S-32 expands each scalar across four lanes");
+ std::vector<std::uint8_t> v4; append32(v4,0x6C010004U); append32(v4,0x01020304U); append32(v4,0x11121314U); append32(v4,0x21222324U); append32(v4,0x31323334U);
+ check(decoder.consume(v4.data(),v4.size()),"decodes a V4-32 UNPACK vector");
+ std::array<std::uint8_t,16> v4read{}; check(mem.read_data(64U,v4read.data(),v4read.size()),"reads V4-32 destination vector");
+ check(v4read[0]==0x04 && v4read[4]==0x14 && v4read[8]==0x24 && v4read[12]==0x34,"V4-32 preserves all four input components");
+ std::vector<std::uint8_t> overflow; append32(overflow,0x6002FFFFU);
+ check(!decoder.consume(overflow.data(),overflow.size()),"rejects UNPACK vector ranges that exceed VU1 memory before writing");
+ decoder.reset();
  const std::uint8_t invalid[4]={0,0,0,0x40}; check(!decoder.consume(invalid,4U)&&(regs.status()&retroshelf::EeVif1Registers::StatEr1)!=0U,"rejects unsupported commands and sets ER1");
  decoder.reset(); check(decoder.last_error()[0]=='\0',"reset clears decoder error state");
  return failures==0?0:1;

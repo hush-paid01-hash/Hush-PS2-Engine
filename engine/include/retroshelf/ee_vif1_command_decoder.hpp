@@ -34,6 +34,8 @@ private:
     std::uint32_t pending_immediate_{0};
     std::uint32_t unpack_address_{0};
     std::uint32_t unpack_remaining_{0};
+    std::uint32_t unpack_format_{0};
+    std::uint32_t unpack_payload_bytes_{0};
     std::uint32_t error_code_{0};
     const char* last_error_{""};
 };
