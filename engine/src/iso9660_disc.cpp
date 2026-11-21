@@ -7,9 +7,6 @@
 
 namespace retroshelf {
 namespace {
-std::uint16_t le16(const std::uint8_t* p) {
-    return static_cast<std::uint16_t>(p[0] | (static_cast<std::uint16_t>(p[1]) << 8U));
-}
 std::uint32_t le32(const std::uint8_t* p) {
     return static_cast<std::uint32_t>(p[0]) |
         (static_cast<std::uint32_t>(p[1]) << 8U) |

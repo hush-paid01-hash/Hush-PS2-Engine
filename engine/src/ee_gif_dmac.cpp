@@ -62,16 +62,16 @@ bool EeDmacGlobalRegisters::write(std::uint32_t offset,
     const std::uint32_t value = decode_u32(data);
     switch (offset) {
     case DmaControlOffset:
-        // Only the global DMA enable bit is consumed by this first GIF-only
-        // implementation. Unsupported scheduling/MFIFO fields are preserved
-        // as zero rather than being treated as implemented.
-        dma_control_ = value & DmaEnable;
+        // Preserve the documented control fields for correct MMIO readback.
+        // Only DMAE currently affects execution; scheduling/MFIFO controls are
+        // retained but not yet acted upon by the transfer scheduler.
+        dma_control_ = value & 0x000007FFU;
         break;
     case DmaStatusOffset:
-        // D_STAT low channel flags are write-one-to-clear; mask bits 16-25
-        // are write-one-to-toggle. Other interrupt sources are not generated.
-        dma_status_ &= ~(value & 0x3FFU);
-        dma_status_ ^= value & 0x03FF0000U;
+        // Channel, stall, MFIFO-empty, and bus-error status bits are
+        // write-one-to-clear. Channel masks and the stall/MFIFO masks toggle.
+        dma_status_ &= ~(value & (0x000003FFU | 0x0000E000U));
+        dma_status_ ^= value & (0x03FF0000U | 0x60000000U);
         break;
     case DmaPriorityOffset: dma_priority_ = value; break;
     case SkipQuadwordOffset: skip_quadword_ = value; break;
@@ -94,6 +94,14 @@ void EeDmacGlobalRegisters::set_channel_interrupt(std::uint32_t channel) {
     if (channel < 10U) dma_status_ |= 1U << channel;
 }
 
+void EeDmacGlobalRegisters::set_stall_interrupt() {
+    dma_status_ |= StallInterruptFlag;
+}
+
+void EeDmacGlobalRegisters::set_mfifo_empty_interrupt() {
+    dma_status_ |= MfifoEmptyInterruptFlag;
+}
+
 void EeDmacGlobalRegisters::set_bus_error() {
     dma_status_ |= BusErrorFlag;
 }
@@ -102,10 +110,10 @@ bool EeDmacGlobalRegisters::int1_pending() const {
     const std::uint32_t channel_status = dma_status_ & 0x3FFU;
     const std::uint32_t channel_mask = (dma_status_ >> 16U) & 0x3FFU;
     const bool masked_channel = (channel_status & channel_mask) != 0U;
-    const bool stall = (dma_status_ & (1U << 13U)) != 0U &&
-                       (dma_status_ & (1U << 29U)) != 0U;
-    const bool mfifo = (dma_status_ & (1U << 14U)) != 0U &&
-                       (dma_status_ & (1U << 30U)) != 0U;
+    const bool stall = (dma_status_ & StallInterruptFlag) != 0U &&
+                       (dma_status_ & StallInterruptMask) != 0U;
+    const bool mfifo = (dma_status_ & MfifoEmptyInterruptFlag) != 0U &&
+                       (dma_status_ & MfifoEmptyInterruptMask) != 0U;
     return masked_channel || stall || mfifo || (dma_status_ & BusErrorFlag) != 0U;
 }
 

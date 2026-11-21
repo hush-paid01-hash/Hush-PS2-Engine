@@ -26,7 +26,11 @@ public:
 
     static constexpr std::uint32_t DmaEnable = 1U;
     static constexpr std::uint32_t GifChannel = 2U;
+    static constexpr std::uint32_t StallInterruptFlag = 1U << 13U;
+    static constexpr std::uint32_t MfifoEmptyInterruptFlag = 1U << 14U;
     static constexpr std::uint32_t BusErrorFlag = 1U << 15U;
+    static constexpr std::uint32_t StallInterruptMask = 1U << 29U;
+    static constexpr std::uint32_t MfifoEmptyInterruptMask = 1U << 30U;
 
     bool read(std::uint32_t offset, std::size_t size,
               std::vector<std::uint8_t>& data,
@@ -36,6 +40,8 @@ public:
 
     bool dma_enabled() const;
     void set_channel_interrupt(std::uint32_t channel);
+    void set_stall_interrupt();
+    void set_mfifo_empty_interrupt();
     void set_bus_error();
     bool int1_pending() const override;
     std::uint32_t status() const;
