@@ -10,6 +10,8 @@
 
 namespace retroshelf {
 
+class EeVif1CommandDecoder;
+
 // VIF1 control/status register bank. This models register semantics only;
 // command execution, FIFO flow control, VU1 memory and PATH2 are separate work.
 class EeVif1Registers final : public MmioDevice {
@@ -104,6 +106,11 @@ public:
                std::string* error = nullptr) override;
     void reset();
     std::size_t count() const;
+    // Move queued quadwords into the incremental VIF1 command decoder.
+    // Stops on the first decoder error and reports how many were consumed.
+    bool drain_to(EeVif1CommandDecoder& decoder,
+                  std::size_t* drained = nullptr,
+                  std::size_t max_quadwords = Capacity);
 
 private:
     void update_status() const;

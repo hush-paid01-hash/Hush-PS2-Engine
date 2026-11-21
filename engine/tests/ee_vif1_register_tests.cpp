@@ -1,4 +1,6 @@
 #include "retroshelf/ee_vif1.hpp"
+#include "retroshelf/ee_vif1_command_decoder.hpp"
+#include "retroshelf/vu1_memory.hpp"
 #include "retroshelf/ee_timer.hpp"
 #include "retroshelf/ps2_ee_memory_map.hpp"
 #include "retroshelf/system_bus.hpp"
@@ -142,6 +144,34 @@ int main() {
     check(vif1_fifo->count() == 0U &&
           (read32(bus, base) & retroshelf::EeVif1Registers::StatFqcMask) == 0U,
           "VIF1 FIFO reset empties queue and status count");
+    // The FIFO can now feed the incremental command decoder, rather than
+    // remaining an isolated MMIO queue. A pair of NOP-only quadwords should
+    // be consumed in order and update FQC as the queue drains.
+    retroshelf::Vu1Memory vu1_memory;
+    retroshelf::EeVif1CommandDecoder decoder(*vif1, vu1_memory);
+    std::vector<std::uint8_t> nop_quadword(16U, 0U);
+    check(bus.write(fifo_base, nop_quadword, &error) &&
+          bus.write(fifo_base, nop_quadword, &error),
+          "queue VIF1 command quadwords for decoder integration");
+    std::size_t drained = 0U;
+    check(vif1_fifo->drain_to(decoder, &drained) && drained == 2U &&
+          vif1_fifo->count() == 0U &&
+          (read32(bus, base) & retroshelf::EeVif1Registers::StatFqcMask) == 0U,
+          "VIF1 FIFO drains quadwords into command decoder and updates FQC");
+
+    // Unsupported opcodes fail closed and set ER1; the FIFO reports exactly
+    // how many quadwords were consumed before the decoder stopped.
+    std::vector<std::uint8_t> invalid_command(16U, 0U);
+    invalid_command[3] = 0xFFU;
+    check(bus.write(fifo_base, invalid_command, &error),
+          "queue unsupported VIF1 opcode for error-path test");
+    drained = 0U;
+    check(!vif1_fifo->drain_to(decoder, &drained) && drained == 1U &&
+          (read32(bus, base) & retroshelf::EeVif1Registers::StatEr1) != 0U,
+          "VIF1 decoder errors stop FIFO drain and expose ER1");
+    decoder.reset();
+    vif1_fifo->reset();
+
     vif1->set_fifo_direction(true);
     check((read32(bus, base) & retroshelf::EeVif1Registers::StatFdr) != 0U,
           "VIF1_STAT exposes FIFO direction flag");

@@ -1,4 +1,5 @@
 #include "retroshelf/ee_vif1.hpp"
+#include "retroshelf/ee_vif1_command_decoder.hpp"
 
 #include <algorithm>
 
@@ -176,6 +177,28 @@ void EeVif1Fifo::reset() {
     update_status();
 }
 std::size_t EeVif1Fifo::count() const { return count_; }
+
+bool EeVif1Fifo::drain_to(EeVif1CommandDecoder& decoder,
+                          std::size_t* drained,
+                          std::size_t max_quadwords) {
+    std::size_t consumed = 0U;
+    while (count_ != 0U && consumed < max_quadwords) {
+        std::vector<std::uint8_t> quadword;
+        std::string error;
+        if (!read(0U, QuadwordSize, quadword, &error)) {
+            if (drained) *drained = consumed;
+            return false;
+        }
+        ++consumed;
+        if (!decoder.consume(quadword.data(), quadword.size())) {
+            if (drained) *drained = consumed;
+            return false;
+        }
+    }
+    if (drained) *drained = consumed;
+    return true;
+}
+
 void EeVif1Fifo::update_status() const { registers_.set_fifo_count(count_); }
 
 } // namespace retroshelf

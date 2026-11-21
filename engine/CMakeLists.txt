@@ -251,7 +251,8 @@ add_test(NAME ee-gif-dmac-tests COMMAND ee-gif-dmac-tests)
 
 
 add_executable(ee-vif1-register-tests tests/ee_vif1_register_tests.cpp
-    src/ee_vif1.cpp src/ee_timer.cpp src/system_bus.cpp src/ps2_ee_memory_map.cpp)
+    src/ee_vif1.cpp src/ee_vif1_command_decoder.cpp src/vu1_memory.cpp
+    src/ee_timer.cpp src/system_bus.cpp src/ps2_ee_memory_map.cpp)
 target_include_directories(ee-vif1-register-tests PRIVATE include)
 target_compile_options(ee-vif1-register-tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME ee-vif1-register-tests COMMAND ee-vif1-register-tests)
