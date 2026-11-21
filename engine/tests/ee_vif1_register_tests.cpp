@@ -172,6 +172,29 @@ int main() {
     decoder.reset();
     vif1_fifo->reset();
 
+    // Leave an incomplete STMASK payload in the decoder, queue data, then
+    // issue the guest-visible FBRST reset. FIFO observation must clear both
+    // queued data and decoder staging before the next drain.
+    const std::uint32_t stmask = 0x20000000U;
+    std::vector<std::uint8_t> stmask_header(4U);
+    for (std::size_t i = 0; i < 4U; ++i)
+        stmask_header[i] = static_cast<std::uint8_t>(stmask >> (8U * i));
+    check(decoder.consume(stmask_header.data(), stmask_header.size()),
+          "decoder stages an incomplete VIF1 payload before reset");
+    check(bus.write(fifo_base, nop_quadword, &error),
+          "queue VIF1 data before hardware reset");
+    write32(bus, base + retroshelf::EeVif1Registers::FbrstOffset, 0x1U);
+    check(vif1_fifo->count() == 0U &&
+          (read32(bus, base) & retroshelf::EeVif1Registers::StatFqcMask) == 0U,
+          "FBRST reset lazily clears FIFO and FQC");
+    check(bus.write(fifo_base, nop_quadword, &error),
+          "queue fresh VIF1 data after hardware reset");
+    drained = 0U;
+    check(vif1_fifo->drain_to(decoder, &drained) && drained == 1U &&
+          (read32(bus, base) & retroshelf::EeVif1Registers::StatEr1) == 0U,
+          "FBRST reset also clears decoder's incomplete command state");
+    vif1_fifo->reset();
+
     vif1->set_fifo_direction(true);
     check((read32(bus, base) & retroshelf::EeVif1Registers::StatFdr) != 0U,
           "VIF1_STAT exposes FIFO direction flag");

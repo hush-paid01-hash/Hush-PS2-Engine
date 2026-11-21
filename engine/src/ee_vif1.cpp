@@ -19,6 +19,7 @@ std::uint32_t EeVif1Registers::decode_u32(const std::vector<std::uint8_t>& data)
 }
 
 void EeVif1Registers::reset() {
+    ++reset_generation_;
     status_ = 0;
     err_ = 0x2U;
     mark_ = cycle_ = mode_ = num_ = mask_ = code_ = 0;
@@ -107,6 +108,7 @@ bool EeVif1Registers::write(std::uint32_t offset, const std::vector<std::uint8_t
 
 std::uint32_t EeVif1Registers::status() const { return status_; }
 std::uint32_t EeVif1Registers::tops() const { return tops_; }
+std::uint64_t EeVif1Registers::reset_generation() const { return reset_generation_; }
 void EeVif1Registers::set_status_flags(std::uint32_t flags) {
     status_ |= flags & (StatVgw | StatMrk | StatDbf | StatVss | StatVfs |
                         StatVis | StatInt | StatEr0 | StatEr1);
@@ -126,12 +128,14 @@ void EeVif1Registers::set_fifo_direction(bool read_from_vif) {
     else status_ &= ~StatFdr;
 }
 
-EeVif1Fifo::EeVif1Fifo(EeVif1Registers& registers) : registers_(registers) {
+EeVif1Fifo::EeVif1Fifo(EeVif1Registers& registers)
+    : registers_(registers), observed_reset_generation_(registers.reset_generation()) {
     update_status();
 }
 
 bool EeVif1Fifo::read(std::uint32_t offset, std::size_t size,
                       std::vector<std::uint8_t>& data, std::string* error) const {
+    synchronize_reset();
     if (offset != 0U || size != QuadwordSize) {
         if (error) *error = "VIF1 FIFO requires a 128-bit access at offset zero";
         data.clear();
@@ -154,6 +158,7 @@ bool EeVif1Fifo::read(std::uint32_t offset, std::size_t size,
 
 bool EeVif1Fifo::write(std::uint32_t offset, const std::vector<std::uint8_t>& data,
                        std::string* error) {
+    synchronize_reset();
     if (offset != 0U || data.size() != QuadwordSize) {
         if (error) *error = "VIF1 FIFO requires a 128-bit access at offset zero";
         return false;
@@ -171,16 +176,25 @@ bool EeVif1Fifo::write(std::uint32_t offset, const std::vector<std::uint8_t>& da
 }
 
 void EeVif1Fifo::reset() {
+    observed_reset_generation_ = registers_.reset_generation();
     head_ = 0U;
     count_ = 0U;
     for (auto& entry : entries_) entry.fill(0U);
     update_status();
 }
-std::size_t EeVif1Fifo::count() const { return count_; }
+std::size_t EeVif1Fifo::count() const {
+    synchronize_reset();
+    return count_;
+}
 
 bool EeVif1Fifo::drain_to(EeVif1CommandDecoder& decoder,
                           std::size_t* drained,
                           std::size_t max_quadwords) {
+    synchronize_reset();
+    if (decoder_reset_pending_) {
+        decoder.reset();
+        decoder_reset_pending_ = false;
+    }
     std::size_t consumed = 0U;
     while (count_ != 0U && consumed < max_quadwords) {
         std::vector<std::uint8_t> quadword;
@@ -197,6 +211,16 @@ bool EeVif1Fifo::drain_to(EeVif1CommandDecoder& decoder,
     }
     if (drained) *drained = consumed;
     return true;
+}
+
+void EeVif1Fifo::synchronize_reset() const {
+    if (observed_reset_generation_ == registers_.reset_generation()) return;
+    head_ = 0U;
+    count_ = 0U;
+    for (auto& entry : entries_) entry.fill(0U);
+    observed_reset_generation_ = registers_.reset_generation();
+    decoder_reset_pending_ = true;
+    update_status();
 }
 
 void EeVif1Fifo::update_status() const { registers_.set_fifo_count(count_); }

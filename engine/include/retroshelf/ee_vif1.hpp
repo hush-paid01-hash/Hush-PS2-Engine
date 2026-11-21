@@ -59,6 +59,7 @@ public:
 
     std::uint32_t status() const;
     std::uint32_t tops() const;
+    std::uint64_t reset_generation() const;
     void set_status_flags(std::uint32_t flags);
     void clear_status_flags(std::uint32_t flags);
     void set_command_status(std::uint32_t vps);
@@ -70,6 +71,7 @@ private:
     static std::uint32_t decode_u32(const std::vector<std::uint8_t>& data);
     void reset();
 
+    std::uint64_t reset_generation_{0};
     std::uint32_t status_{0};
     std::uint32_t err_{0x2U}; // ME0: suppress DMAtag mismatch stalls by default.
     std::uint32_t mark_{0};
@@ -114,10 +116,13 @@ public:
 
 private:
     void update_status() const;
+    void synchronize_reset() const;
     EeVif1Registers& registers_;
     mutable std::array<std::array<std::uint8_t, QuadwordSize>, Capacity> entries_{};
     mutable std::size_t head_{0};
     mutable std::size_t count_{0};
+    mutable std::uint64_t observed_reset_generation_{0};
+    mutable bool decoder_reset_pending_{false};
 };
 
 } // namespace retroshelf
