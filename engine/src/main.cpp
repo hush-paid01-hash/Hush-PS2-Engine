@@ -8,6 +8,9 @@
 #include "retroshelf/ee_timer.hpp"
 #include "retroshelf/ee_gif_dmac.hpp"
 #include "retroshelf/ee_vif1.hpp"
+#include "retroshelf/ee_vif1_command_decoder.hpp"
+#include "retroshelf/ee_vif1_dmac.hpp"
+#include "retroshelf/vu1_memory.hpp"
 #include "retroshelf/ee_gif_gs_runtime.hpp"
 #include <memory>
 
@@ -91,6 +94,11 @@ int run_bios(const std::string& path, std::size_t budget) {
     auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
     auto vif1 = std::make_shared<retroshelf::EeVif1Registers>();
     auto vif1_fifo = std::make_shared<retroshelf::EeVif1Fifo>(*vif1);
+    auto vu1_memory = std::make_shared<retroshelf::Vu1Memory>();
+    auto vif1_decoder = std::make_shared<retroshelf::EeVif1CommandDecoder>(
+        *vif1, *vu1_memory);
+    auto vif1_dma = std::make_shared<retroshelf::EeVif1DmacChannel1>(
+        bus, *vif1_fifo, *vif1_decoder, *dmac_global);
     auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
         *gif_runtime, *dmac_global);
     if (!bus.map_mmio(retroshelf::EeInterruptController::RegisterBase,
@@ -104,7 +112,9 @@ int run_bios(const std::string& path, std::size_t budget) {
         !bus.map_mmio(retroshelf::EeVif1Registers::RegisterBase,
                       retroshelf::EeVif1Registers::RegisterSize, vif1, &error) ||
         !bus.map_mmio(retroshelf::EeVif1Fifo::RegisterBase,
-                      retroshelf::EeVif1Fifo::RegisterSize, vif1_fifo, &error)) {
+                      retroshelf::EeVif1Fifo::RegisterSize, vif1_fifo, &error) ||
+        !bus.map_mmio(retroshelf::EeVif1DmacChannel1::RegisterBase,
+                      retroshelf::EeVif1DmacChannel1::RegisterSize, vif1_dma, &error)) {
         std::cerr << "Cannot map EE diagnostic devices: " << error << "\n";
         return 2;
     }
