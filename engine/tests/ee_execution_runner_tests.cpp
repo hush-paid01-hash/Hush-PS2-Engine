@@ -8,6 +8,13 @@
 #include <string>
 #include <vector>
 
+namespace {
+class PendingDmacInterrupt final : public retroshelf::EeDmacInterruptSource {
+public:
+    bool int1_pending() const override { return true; }
+};
+} // namespace
+
 int main() {
     retroshelf::EeExecutionRunner::Result not_started;
     assert(not_started.reason == retroshelf::EeExecutionRunner::StopReason::NotStarted);
@@ -373,6 +380,37 @@ int main() {
     assert(irq_run.trace[12].pc == exception_vector);
     assert(irq_cpu.reg(11U) == 99U); // handler ran
     assert(irq_cpu.reg(17U) == 0U); // interrupted instruction did not run
+
+    // DMAC INT1 is independently accepted through Cause.IP2 / Status.IM11.
+    retroshelf::Ps2EeMemoryMap dmac_irq_memory(64U * 1024U);
+    retroshelf::Cpu dmac_irq_cpu;
+    retroshelf::SystemBus dmac_irq_bus(dmac_irq_memory);
+    PendingDmacInterrupt pending_dmac;
+    constexpr std::uint32_t dmac_irq_start = 0x80004000U;
+    const std::uint32_t dmac_irq_program[] = {
+        (0x09U << 26U) | (8U << 16U) | 0x0801U, // IE + IM11 (DMAC INT1)
+        (0x10U << 26U) | (0x04U << 21U) | (8U << 16U) | (12U << 11U), // MTC0 Status
+        (0x09U << 26U) | (17U << 16U) | 77U // Must be interrupted before this instruction
+    };
+    for (std::size_t i = 0; i < sizeof(dmac_irq_program) / sizeof(dmac_irq_program[0]); ++i)
+        assert(dmac_irq_memory.write(dmac_irq_start + static_cast<std::uint32_t>(i * 4U),
+                                     4U, dmac_irq_program[i], &error));
+    assert(dmac_irq_memory.write(exception_vector, 4,
+        (0x09U << 26U) | (11U << 16U) | 99U, &error));
+    dmac_irq_cpu.set_pc(dmac_irq_start);
+    retroshelf::EeExecutionRunner dmac_irq_runner(
+        dmac_irq_cpu, dmac_irq_memory, dmac_irq_bus, pending_dmac);
+    const auto dmac_irq_run = dmac_irq_runner.run(4U);
+    assert(dmac_irq_run.instructions_executed == 4U);
+    assert(dmac_irq_run.trace.size() == 4U);
+    assert(dmac_irq_run.trace[2].pc == dmac_irq_start + 8U);
+    assert(dmac_irq_run.trace[2].exception_taken);
+    assert(dmac_irq_run.trace[2].exception_code == 0U);
+    assert(dmac_irq_run.trace[2].exception_epc == dmac_irq_start + 8U);
+    assert((dmac_irq_cpu.cop0_cause() & retroshelf::Cpu::CauseDmacInterruptPending) != 0U);
+    assert(dmac_irq_run.trace[3].pc == exception_vector);
+    assert(dmac_irq_cpu.reg(11U) == 99U); // DMAC interrupt handler executed
+    assert(dmac_irq_cpu.reg(17U) == 0U); // interrupted instruction did not run
 
     return 0;
 }

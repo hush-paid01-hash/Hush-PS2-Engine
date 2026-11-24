@@ -33,6 +33,16 @@ EeExecutionRunner::EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory,
                                      EeTimerBlock& timers)
     : cpu_(cpu), memory_(memory), bus_(&bus), intc_(&intc), timers_(&timers) {}
 
+EeExecutionRunner::EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory,
+                                     SystemBus& bus, EeDmacInterruptSource& dmac)
+    : cpu_(cpu), memory_(memory), bus_(&bus), dmac_(&dmac) {}
+
+EeExecutionRunner::EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory,
+                                     SystemBus& bus, EeInterruptController& intc,
+                                     EeTimerBlock& timers, EeDmacInterruptSource& dmac)
+    : cpu_(cpu), memory_(memory), bus_(&bus), intc_(&intc), timers_(&timers),
+      dmac_(&dmac) {}
+
 EeExecutionRunner::Result EeExecutionRunner::run_from_bios_reset_vector(std::size_t instruction_budget) {
     cpu_.reset();
     cpu_.set_bootstrap_exception_vectors_enabled(true);
@@ -62,6 +72,9 @@ EeExecutionRunner::Result EeExecutionRunner::run(std::size_t instruction_budget)
 
         std::string error;
         cpu_.set_ee_interrupt_pending(intc_ != nullptr && intc_->active_pending() != 0U);
+        // DMAC INT1 is a separate EE interrupt input from INTC INT0. It is
+        // reflected in COP0 Cause.IP2 (bit 11), not INTC_STAT.
+        cpu_.set_ee_dmac_interrupt_pending(dmac_ != nullptr && dmac_->int1_pending());
         const bool instruction_completed = bus_ != nullptr
             ? cpu_.step_from_ee_bus(memory_, *bus_, &error)
             : cpu_.step_from_ee_memory(memory_, &error);

@@ -5,6 +5,10 @@
 #include "retroshelf/gs_framebuffer.hpp"
 #include "retroshelf/ee_gif_gs_runtime.hpp"
 #include "retroshelf/ee_gif_dmac.hpp"
+#include "retroshelf/ee_vif1.hpp"
+#include "retroshelf/ee_vif1_command_decoder.hpp"
+#include "retroshelf/ee_vif1_dmac.hpp"
+#include "retroshelf/vu1_memory.hpp"
 #include "retroshelf/ee_execution_runner.hpp"
 #include "retroshelf/gs_gif_pipeline.hpp"
 #include "retroshelf/gs_packet_processor.hpp"
@@ -188,20 +192,33 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
 
     // Expose the first implemented guest-programmable DMA path. The GIF
     // runtime reads the same EE memory map while the CPU sees channel/global
-    // registers through this execution bus. INT1 remains a polled D_STAT
-    // status source until the CPU interrupt model supports the separate line.
+    // registers through this execution bus. DMAC INT1 is sampled separately
+    // from INTC INT0 and reflected in COP0 Cause.IP2 by the runner.
     auto gif_runtime = std::make_shared<retroshelf::EeGifGsRuntime>(memory, 320, 240);
     auto dmac_global = std::make_shared<retroshelf::EeDmacGlobalRegisters>();
+    auto vif1 = std::make_shared<retroshelf::EeVif1Registers>();
+    auto vif1_fifo = std::make_shared<retroshelf::EeVif1Fifo>(*vif1);
+    auto vu1_memory = std::make_shared<retroshelf::Vu1Memory>();
+    auto vif1_decoder = std::make_shared<retroshelf::EeVif1CommandDecoder>(
+        *vif1, *vu1_memory);
+    auto vif1_dma = std::make_shared<retroshelf::EeVif1DmacChannel1>(
+        bus, *vif1_fifo, *vif1_decoder, *dmac_global);
     auto gif_channel = std::make_shared<retroshelf::EeGifDmacChannel2>(
         *gif_runtime, *dmac_global);
     if (!bus.map_mmio(retroshelf::EeGifDmacChannel2::RegisterBase,
                       retroshelf::EeGifDmacChannel2::RegisterSize, gif_channel, &error) ||
         !bus.map_mmio(retroshelf::EeDmacGlobalRegisters::RegisterBase,
-                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error))
+                      retroshelf::EeDmacGlobalRegisters::RegisterSize, dmac_global, &error) ||
+        !bus.map_mmio(retroshelf::EeVif1Registers::RegisterBase,
+                      retroshelf::EeVif1Registers::RegisterSize, vif1, &error) ||
+        !bus.map_mmio(retroshelf::EeVif1Fifo::RegisterBase,
+                      retroshelf::EeVif1Fifo::RegisterSize, vif1_fifo, &error) ||
+        !bus.map_mmio(retroshelf::EeVif1DmacChannel1::RegisterBase,
+                      retroshelf::EeVif1DmacChannel1::RegisterSize, vif1_dma, &error))
         return 0;
 
     const std::uint64_t budget = std::min<std::uint64_t>(instruction_budget, 1000000U);
-    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers);
+    retroshelf::EeExecutionRunner runner(cpu, memory, bus, *intc, *timers, *dmac_global);
     // Exercise the reset vector with the currently modelled EE timer and INTC
     // devices connected. This remains a bounded smoke test, not a full BIOS boot.
     const auto result = runner.run_from_bios_reset_vector(static_cast<std::size_t>(budget));
@@ -221,6 +238,11 @@ extern "C" int32_t retroshelf_engine_run_bios_reset_vector(
                 break;
             case retroshelf::EeExecutionRunner::StopReason::InvalidInstructionFetch:
                 *stop_reason = 2;
+                break;
+            case retroshelf::EeExecutionRunner::StopReason::NotStarted:
+            case retroshelf::EeExecutionRunner::StopReason::NoInstructionsRequested:
+            case retroshelf::EeExecutionRunner::StopReason::ExecutionError:
+                *stop_reason = 3;
                 break;
         }
     }
@@ -288,6 +310,11 @@ extern "C" int32_t retroshelf_engine_run_disc_subset(
                 break;
             case retroshelf::EeExecutionRunner::StopReason::InvalidInstructionFetch:
                 *stop_reason = 2;
+                break;
+            case retroshelf::EeExecutionRunner::StopReason::NotStarted:
+            case retroshelf::EeExecutionRunner::StopReason::NoInstructionsRequested:
+            case retroshelf::EeExecutionRunner::StopReason::ExecutionError:
+                *stop_reason = 3;
                 break;
         }
     }

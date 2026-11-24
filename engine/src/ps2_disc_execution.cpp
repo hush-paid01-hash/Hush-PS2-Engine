@@ -2,6 +2,10 @@
 #include "retroshelf/ee_interrupt_controller.hpp"
 #include "retroshelf/ee_timer.hpp"
 #include "retroshelf/ee_gif_dmac.hpp"
+#include "retroshelf/ee_vif1.hpp"
+#include "retroshelf/ee_vif1_command_decoder.hpp"
+#include "retroshelf/ee_vif1_dmac.hpp"
+#include "retroshelf/vu1_memory.hpp"
 #include "retroshelf/ee_gif_gs_runtime.hpp"
 #include "retroshelf/system_bus.hpp"
 
@@ -32,6 +36,12 @@ Ps2DiscExecutionResult load_and_execute_ps2_disc(const Iso9660Disc& disc,
     auto timers = std::make_shared<EeTimerBlock>();
     auto gif_runtime = std::make_shared<EeGifGsRuntime>(memory, 320, 240);
     auto dmac_global = std::make_shared<EeDmacGlobalRegisters>();
+    auto vif1 = std::make_shared<EeVif1Registers>();
+    auto vif1_fifo = std::make_shared<EeVif1Fifo>(*vif1);
+    auto vu1_memory = std::make_shared<Vu1Memory>();
+    auto vif1_decoder = std::make_shared<EeVif1CommandDecoder>(*vif1, *vu1_memory);
+    auto vif1_dma = std::make_shared<EeVif1DmacChannel1>(
+        bus, *vif1_fifo, *vif1_decoder, *dmac_global);
     auto gif_channel = std::make_shared<EeGifDmacChannel2>(*gif_runtime, *dmac_global);
 
     if (!bus.map_mmio(EeInterruptController::RegisterBase,
@@ -41,7 +51,13 @@ Ps2DiscExecutionResult load_and_execute_ps2_disc(const Iso9660Disc& disc,
         !bus.map_mmio(EeGifDmacChannel2::RegisterBase,
                       EeGifDmacChannel2::RegisterSize, gif_channel, &result.error) ||
         !bus.map_mmio(EeDmacGlobalRegisters::RegisterBase,
-                      EeDmacGlobalRegisters::RegisterSize, dmac_global, &result.error)) {
+                      EeDmacGlobalRegisters::RegisterSize, dmac_global, &result.error) ||
+        !bus.map_mmio(EeVif1Registers::RegisterBase,
+                      EeVif1Registers::RegisterSize, vif1, &result.error) ||
+        !bus.map_mmio(EeVif1Fifo::RegisterBase, EeVif1Fifo::RegisterSize,
+                      vif1_fifo, &result.error) ||
+        !bus.map_mmio(EeVif1DmacChannel1::RegisterBase,
+                      EeVif1DmacChannel1::RegisterSize, vif1_dma, &result.error)) {
         result.image_loaded = false;
         return result;
     }

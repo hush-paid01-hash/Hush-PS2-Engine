@@ -74,6 +74,11 @@ void Cpu::set_ee_interrupt_pending(bool pending) {
     else cause_ &= ~CauseEeInterruptPending;
 }
 
+void Cpu::set_ee_dmac_interrupt_pending(bool pending) {
+    if (pending) cause_ |= CauseDmacInterruptPending;
+    else cause_ &= ~CauseDmacInterruptPending;
+}
+
 void Cpu::advance_ee_cycles(std::uint64_t cycles) {
     if (cycles == 0U) return;
     const std::uint32_t count = cop0_regs_[9];

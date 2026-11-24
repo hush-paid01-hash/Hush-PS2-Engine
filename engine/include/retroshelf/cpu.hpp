@@ -28,6 +28,7 @@ public:
     bool step_from_ee_bus(Ps2EeMemoryMap& memory, SystemBus& bus,
                           std::string* error = nullptr);
     void set_ee_interrupt_pending(bool pending);
+    void set_ee_dmac_interrupt_pending(bool pending);
     // Enable the ROM-resident bootstrap exception vectors for BIOS startup.
     void set_bootstrap_exception_vectors_enabled(bool enabled);
     // Advance the simplified EE Count register in deterministic runtime cycles.
@@ -50,6 +51,7 @@ public:
     // used by the shared PS2 BIOS reset stub to select the EE boot path.
     static constexpr std::uint32_t EeProcessorId = 0x00002E20U;
     static constexpr std::uint32_t CauseEeInterruptPending = 1U << 10U;
+    static constexpr std::uint32_t CauseDmacInterruptPending = 1U << 11U;
     static constexpr std::uint32_t CauseTimerInterruptPending = 1U << 15U;
     static constexpr std::uint32_t ExcSyscall = 8;
     static constexpr std::uint32_t ExcBreakpoint = 9;

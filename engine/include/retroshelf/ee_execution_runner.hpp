@@ -1,6 +1,7 @@
 #pragma once
 
 #include "retroshelf/cpu.hpp"
+#include "retroshelf/ee_dmac_interrupt_source.hpp"
 #include "retroshelf/ps2_ee_memory_map.hpp"
 
 #include <cstddef>
@@ -13,6 +14,7 @@ namespace retroshelf {
 class SystemBus;
 class EeInterruptController;
 class EeTimerBlock;
+
 
 // Bounded interpreter loop for the currently implemented EE instruction subset.
 // This is a development runner, not a complete PS2 hardware/BIOS implementation.
@@ -63,6 +65,11 @@ public:
                       EeInterruptController& intc);
     EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory, SystemBus& bus,
                       EeInterruptController& intc, EeTimerBlock& timers);
+    EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory, SystemBus& bus,
+                      EeInterruptController& intc, EeTimerBlock& timers,
+                      EeDmacInterruptSource& dmac);
+    EeExecutionRunner(Cpu& cpu, Ps2EeMemoryMap& memory, SystemBus& bus,
+                      EeDmacInterruptSource& dmac);
     Result run(std::size_t instruction_budget);
 
     // Reset the interpreter state and begin fetching at the EE BIOS reset vector.
@@ -76,6 +83,7 @@ private:
     SystemBus* bus_{nullptr};
     EeInterruptController* intc_{nullptr};
     EeTimerBlock* timers_{nullptr};
+    EeDmacInterruptSource* dmac_{nullptr};
 };
 
 } // namespace retroshelf
