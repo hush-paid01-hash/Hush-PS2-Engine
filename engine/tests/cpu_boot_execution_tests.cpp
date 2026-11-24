@@ -94,6 +94,12 @@ int main() {
     assert(ee.write(0x80002000U, 4,
                     (0x23U << 26U) | (16U << 21U) | (9U << 16U), &error)); // LW t1,0(s0)
     assert(!bad_load_cpu.step_from_ee_memory(ee, &error));
+    assert(error.find("instruction=0x") != std::string::npos);
+    assert(error.find("opcode=0x23") != std::string::npos);
+    assert(error.find("base=0x30000000") != std::string::npos);
+    assert(error.find("effective=0x30000000") != std::string::npos);
+    assert(error.find("width=4") != std::string::npos);
+    assert(error.find("access=read") != std::string::npos);
     assert(bad_load_cpu.cop0_bad_vaddr() == 0x30000000U);
     assert((bad_load_cpu.cop0_cause() & (0x1FU << 2U)) ==
            (retroshelf::Cpu::ExcAddressErrorLoad << 2U));
