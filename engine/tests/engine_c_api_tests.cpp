@@ -86,6 +86,39 @@ int main() {
     assert(retroshelf_engine_trace_pc(1U) == 0xBFC00004ULL);
     assert(retroshelf_engine_trace_instruction(1U) == ((0x09U << 26U) | (9U << 16U) | 5U));
     assert(retroshelf_engine_trace_fetched(1U) == 1);
+    // Guest code can now enable the EE DMAC and start the mapped VIF1
+    // channel 1 using a one-quadword NOP stream from EE RAM address zero.
+    // This proves the BIOS diagnostic runner exposes the connected VIF1 DMA
+    // register path; it does not claim VIF1 hardware accuracy or game boot.
+    const auto vif1DmaBios = biosDir / "vif1-dma-bios.bin";
+    {
+        std::ofstream out(vif1DmaBios, std::ios::binary);
+        const std::uint32_t words[] = {
+            (0x0FU << 26U) | (8U << 16U) | 0x1000U, // LUI t0,0x1000
+            (0x0DU << 26U) | (8U << 21U) | (8U << 16U) | 0xE000U, // ORI t0,t0,0xE000
+            (0x09U << 26U) | (9U << 16U) | 1U, // ADDIU t1,zero,1
+            (0x2BU << 26U) | (8U << 21U) | (9U << 16U), // SW t1,0(t0): D_CTRL.DMAE
+            (0x0FU << 26U) | (8U << 16U) | 0x1000U, // LUI t0,0x1000
+            (0x0DU << 26U) | (8U << 21U) | (8U << 16U) | 0x9000U, // ORI t0,t0,0x9000
+            (0x09U << 26U) | (9U << 16U) | 1U, // ADDIU t1,zero,1
+            (0x2BU << 26U) | (8U << 21U) | (9U << 16U) | 0x20U, // SW t1,0x20(t0): QWC
+            (0x09U << 26U) | (9U << 16U) | 0x100U, // ADDIU t1,zero,0x100
+            (0x2BU << 26U) | (8U << 21U) | (9U << 16U), // SW t1,0(t0): CHCR.STR
+        };
+        for (const std::uint32_t word : words) {
+            out.put(static_cast<char>(word & 0xFFU));
+            out.put(static_cast<char>((word >> 8U) & 0xFFU));
+            out.put(static_cast<char>((word >> 16U) & 0xFFU));
+            out.put(static_cast<char>((word >> 24U) & 0xFFU));
+        }
+    }
+    assert(retroshelf_engine_run_bios_reset_vector(
+        vif1DmaBios.string().c_str(), 10, &biosInstructions, &biosPC, &biosReason) == 1);
+    assert(biosInstructions == 10);
+    assert(biosPC == 0xBFC00028ULL);
+    assert(biosReason == 0);
+    assert(retroshelf_engine_trace_count() == 10U);
+
     // An unsupported guest opcode must be surfaced to the native frontend.
     const auto unsupportedBios = biosDir / "unsupported-bios.bin";
     {
