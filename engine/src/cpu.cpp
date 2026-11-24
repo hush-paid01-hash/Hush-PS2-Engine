@@ -1530,7 +1530,22 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
         std::uint8_t* bytes = nullptr;
         std::size_t offset = 0;
         const auto fault = [&](const char* message) {
-            if (error) *error = message;
+            if (error) {
+                std::ostringstream detail;
+                detail << message
+                       << " [EE memory fault: pc=0x" << std::hex << cur_pc
+                       << " instruction=0x" << instruction
+                       << " opcode=0x" << opcode
+                       << " rs=" << std::dec << rs
+                       << " rt=" << rt
+                       << " base=0x" << std::hex << reg(rs)
+                       << " immediate=" << std::dec << simm
+                       << " effective=0x" << std::hex << address
+                       << " width=" << std::dec << width
+                       << " access=" << (store ? "write" : "read")
+                       << " delay_slot=" << (in_delay ? "true" : "false") << "]";
+                *error = detail.str();
+            }
             bad_vaddr_ = address;
             raise_exception(store ? ExcAddressErrorStore : ExcAddressErrorLoad, cur_pc, in_delay);
             return false;
