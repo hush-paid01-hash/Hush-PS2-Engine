@@ -1,41 +1,35 @@
-# Research Notes: Native iPhone PS2 Emulator Feasibility
+# Hush Original PS2 Engine — Research Notes
 
-**Status:** researching
-**Depth:** Quick
+**Status:** implementation and hardware-validation research
+**Project rule:** Hush is an independent PS2 emulator. Do not integrate, vendor, wrap, bundle, or build another emulator project or core.
 
-## Plan
+## Scope
 
-- **Question:** Can RetroShelf become a native iPhone app that runs PS2 games, and what would that require?
-- **Scope:** Existing open-source PS2 cores, iOS JIT and distribution requirements, Replit/Expo build constraints, and realistic game compatibility. No ROM, BIOS, or piracy instructions.
-- **Audience:** RetroShelf owner
-- **Deliverable:** A sourced feasibility assessment and recommended next step, not an emulator implementation.
+- Develop Hush-owned implementations of the PlayStation 2 EE/R5900, VU0/VU1, IOP, GS, memory, DMA/SIF, interrupts, timers, BIOS execution, audio, and iOS integration.
+- Use primary hardware documentation and independently written tests.
+- Research iOS execution, JIT restrictions, signing, installation, and native build constraints.
+- Validate compatibility through real BIOS and game execution on physical iPhone hardware.
 
-## Focus Areas
+## Explicit exclusions
 
-| # | Area | Status | Sources |
-|---|---|---|---|
-| 1 | Available iOS PS2 cores and game compatibility | pending | -- |
-| 2 | iOS JIT, installation, and App Store constraints | pending | -- |
-| 3 | Replit/Expo native build and integration limits | pending | -- |
+- Do not use PCSX2, ARMSX2, Play!, AetherSX2, or another emulator as a source tree, core, binary, submodule, build input, or runtime dependency.
+- Do not copy or adapt another emulator's implementation.
+- Do not create CI workflows that check out or package another emulator.
+- General-purpose developer tools and libraries may be considered only after provenance and license review and only when they do not embed an emulator core.
 
-## Coverage Checklist
+## Focus areas
 
-- [ ] Identify a credible, maintained PS2 emulator core with iOS support.
-- [ ] Determine whether its iOS build requires JIT.
-- [ ] Explain what JIT access means for ordinary iPhone installation and App Store distribution.
-- [ ] Check whether the existing Expo/Expo Launch path can include a custom native emulator core.
-- [ ] Determine whether “any PS2 game” is a realistic compatibility promise.
-- [ ] Recommend a route that fits the user’s request and current project.
+| # | Area | Status |
+|---|---|---|
+| 1 | EE/R5900 instruction coverage, exceptions, and BIOS execution | In progress |
+| 2 | VU0/VU1 execution and VIF pathways | In progress |
+| 3 | GS rendering, GIF, and DMA correctness | In progress |
+| 4 | IOP, SIF, audio, and peripheral behavior | Planned |
+| 5 | iOS ARM64 execution, JIT constraints, and native app integration | Planned |
+| 6 | Real BIOS and game validation on physical iPhone | Not yet demonstrated |
 
-## Findings Log
+## Acceptance standard
 
-_Findings and citations will be added after source collection._
+A passing unit test, synthetic frame, BIOS trace, simulator build, or successful CI run is not proof of playability. A playability claim requires an actual PS2 title to boot and run interactively on supported physical iPhone hardware.
 
-## Conflicts & Open Questions
-
-- Search results surfaced current iOS emulator projects, but their distribution status and claims about performance need primary-source confirmation.
-- Replit documentation search did not return a page for custom native iOS modules; verify the limits using targeted official docs and the existing project setup.
-
-## Gaps
-
-- No gaps assessed yet.
+See [ORIGINAL_ENGINE_POLICY.md](../docs/ORIGINAL_ENGINE_POLICY.md) for the repository-wide contribution and dependency rules.
