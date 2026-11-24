@@ -602,9 +602,13 @@ bool Cpu::step(std::uint32_t instruction, std::string* error) {
             const std::uint64_t source[2] = {reg(rt), reg_high(rt)};
             if (sub_op == 30U) { // PEXT5: four halfwords -> four words
                 for (unsigned lane = 0; lane < 4U; ++lane) {
-                    const unsigned source_shift = lane * 16U;
+                    // PEXT5 consumes two packed pixels from each 64-bit
+                    // half of the 128-bit EE GPR. The third and fourth
+                    // pixels therefore come from the upper half, starting
+                    // again at bit zero within that half.
+                    const unsigned source_shift = (lane % 2U) * 16U;
                     const std::uint16_t pixel = static_cast<std::uint16_t>(
-                        (source[lane / 4U] >> source_shift) & 0xFFFFU);
+                        (source[lane / 2U] >> source_shift) & 0xFFFFU);
                     const std::uint32_t word =
                         (static_cast<std::uint32_t>(pixel & 0x8000U) << 16U) |
                         (static_cast<std::uint32_t>((pixel >> 10U) & 0x1FU) << 23U) |
